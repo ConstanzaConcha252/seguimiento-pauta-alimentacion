@@ -2,7 +2,7 @@
 
 Web app personal para registrar el cumplimiento de la pauta nutricional día a día, pensada para usarse desde el celular (agregada a la pantalla de inicio, funciona como una app).
 
-**App en vivo:** https://constanzaconcha252.github.io/seguimiento-pauta-alimentacion/seguimiento_nutricional.html
+**App en vivo:** : link xxxx
 
 ## Qué hace
 
