@@ -300,6 +300,20 @@
   .sheets-dot[data-state="on"]{background:var(--good);}
   .sheets-dot[data-state="syncing"]{background:var(--warn);}
   .sheets-dot[data-state="error"]{background:var(--critical);}
+
+  .period-nav{display:flex; align-items:center; justify-content:center; gap:14px; margin:0 0 2px;}
+  .period-nav button{
+    width:34px; height:34px; border-radius:10px; border:1px solid var(--border);
+    background:var(--surface); color:var(--ink); font-size:18px; line-height:1;
+    cursor:pointer; display:flex; align-items:center; justify-content:center;
+  }
+  .period-nav button:disabled{opacity:.35; cursor:default;}
+  .period-nav .label{
+    font-family:"IBM Plex Sans"; font-weight:700; font-size:14px; min-width:160px; text-align:center;
+  }
+  .heatmap.month{border-spacing:2px;}
+  .heatmap.month td.cell{width:26px; min-width:26px; height:26px; font-size:9.5px; border-radius:5px;}
+  .heatmap.month th{font-size:9px; min-width:26px; padding-bottom:2px;}
 </style>
 </head>
 <body>
@@ -317,6 +331,7 @@
     <nav class="tabs" role="tablist">
       <button role="tab" id="tab-btn-registrar" aria-selected="true">Registrar</button>
       <button role="tab" id="tab-btn-semana" aria-selected="false">Semana</button>
+      <button role="tab" id="tab-btn-mes" aria-selected="false">Mes</button>
     </nav>
   </header>
 
@@ -357,6 +372,7 @@
     </section>
 
     <section id="tab-semana">
+      <div class="period-nav" id="week-nav"></div>
       <div class="stat-tile">
         <div class="num" id="week-pct">—%</div>
         <div class="lbl">cumplimiento promedio de la semana</div>
@@ -378,6 +394,37 @@
       <div class="card">
         <div class="section-label" style="margin-bottom:8px;">Fuera de la pauta esta semana</div>
         <div class="today-list" id="week-extras"></div>
+      </div>
+    </section>
+
+    <section id="tab-mes">
+      <div class="period-nav" id="month-nav"></div>
+      <div class="stat-tile">
+        <div class="num" id="month-pct">—%</div>
+        <div class="lbl">cumplimiento promedio del mes</div>
+        <div class="week-range" id="month-range"></div>
+      </div>
+
+      <div class="card">
+        <div class="section-label" style="margin-bottom:10px;">Por categoría y día</div>
+        <div style="overflow-x:auto;">
+          <table class="heatmap month" id="heatmap-month"></table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-label" style="margin-bottom:6px;">Cumplimiento por semana</div>
+        <div id="month-week-bars"></div>
+      </div>
+
+      <div class="card">
+        <div class="section-label" style="margin-bottom:6px;">Promedio del mes por categoría</div>
+        <div id="month-bars"></div>
+      </div>
+
+      <div class="card">
+        <div class="section-label" style="margin-bottom:8px;">Fuera de la pauta este mes</div>
+        <div class="today-list" id="month-extras"></div>
       </div>
     </section>
   </main>
@@ -496,6 +543,9 @@
   var draft = {}; // ephemeral stepper values for the active meal, category -> portions
   var activeMeal = autoMeal();
   var activeTab = "registrar";
+  var weekOffset = 0;  // 0 = semana actual; negativo = semanas anteriores (nunca > 0)
+  var monthOffset = 0; // 0 = mes actual; negativo = meses anteriores (nunca > 0)
+  var MONTH_LABELS = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
 
   /* ---------- Date helpers ---------- */
   function localDateStr(d){
@@ -531,6 +581,26 @@
     var out = [];
     for (var i=0;i<7;i++){ var dt=new Date(mon); dt.setDate(mon.getDate()+i); out.push(dt); }
     return out;
+  }
+  function addDays(d, n){ var r = new Date(d); r.setDate(r.getDate()+n); return r; }
+  function weekDatesForOffset(offset){ return weekDates(addDays(new Date(), offset*7)); }
+  function monthInfoForOffset(offset){
+    var now = new Date();
+    var first = new Date(now.getFullYear(), now.getMonth()+offset, 1);
+    var daysInMonth = new Date(first.getFullYear(), first.getMonth()+1, 0).getDate();
+    var days = [];
+    for (var i=0;i<daysInMonth;i++) days.push(new Date(first.getFullYear(), first.getMonth(), i+1));
+    return {year:first.getFullYear(), month:first.getMonth(), days:days};
+  }
+  function weeksInMonth(days){
+    // Agrupa en semanas lunes–domingo, igual que el resto de la app.
+    var weeks = [], current = [];
+    days.forEach(function(d){
+      current.push(d);
+      if (d.getDay()===0){ weeks.push(current); current=[]; }
+    });
+    if (current.length) weeks.push(current);
+    return weeks;
   }
   function capitalize(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
 
@@ -595,8 +665,10 @@
   function renderTabs(){
     document.getElementById("tab-btn-registrar").setAttribute("aria-selected", activeTab==="registrar");
     document.getElementById("tab-btn-semana").setAttribute("aria-selected", activeTab==="semana");
+    document.getElementById("tab-btn-mes").setAttribute("aria-selected", activeTab==="mes");
     document.getElementById("tab-registrar").className = activeTab==="registrar" ? "active" : "";
     document.getElementById("tab-semana").className = activeTab==="semana" ? "active" : "";
+    document.getElementById("tab-mes").className = activeTab==="mes" ? "active" : "";
   }
 
   function renderProfileRow(){
@@ -800,17 +872,34 @@
     return 4;
   }
 
+  function renderPeriodNav(hostId, label, canGoNext, onPrev, onNext){
+    var host = document.getElementById(hostId);
+    host.innerHTML = "";
+    var prev = document.createElement("button");
+    prev.type = "button"; prev.textContent = "‹"; prev.setAttribute("aria-label", "Período anterior");
+    prev.addEventListener("click", onPrev);
+    var lbl = document.createElement("div");
+    lbl.className = "label"; lbl.textContent = label;
+    var next = document.createElement("button");
+    next.type = "button"; next.textContent = "›"; next.setAttribute("aria-label", "Período siguiente");
+    next.disabled = !canGoNext;
+    next.addEventListener("click", onNext);
+    host.appendChild(prev); host.appendChild(lbl); host.appendChild(next);
+  }
+
   function renderWeek(){
-    var anchor = new Date();
-    var days = weekDates(anchor);
+    var days = weekDatesForOffset(weekOffset);
     var dateStrs = days.map(localDateStr);
+    var rangeTxt = new Intl.DateTimeFormat("es-CL",{day:"numeric",month:"short"}).format(days[0]) + " – " +
+                   new Intl.DateTimeFormat("es-CL",{day:"numeric",month:"short"}).format(days[6]) + " " + days[6].getFullYear();
+    renderPeriodNav("week-nav", rangeTxt, weekOffset < 0,
+      function(){ weekOffset -= 1; renderWeek(); },
+      function(){ if (weekOffset < 0){ weekOffset += 1; renderWeek(); } });
 
     var pctSum=0, pctCount=0;
     dateStrs.forEach(function(ds){ pctSum += dayPct(ds); pctCount++; });
     var weekPct = pctCount>0 ? Math.round(pctSum/pctCount) : 0;
     document.getElementById("week-pct").textContent = weekPct + "%";
-    var rangeTxt = new Intl.DateTimeFormat("es-CL",{day:"numeric",month:"short"}).format(days[0]) + " – " +
-                   new Intl.DateTimeFormat("es-CL",{day:"numeric",month:"short"}).format(days[6]);
     document.getElementById("week-range").textContent = rangeTxt;
 
     var table = document.getElementById("heatmap");
@@ -856,6 +945,73 @@
     }
   }
 
+  function renderMonth(){
+    var info = monthInfoForOffset(monthOffset);
+    var dateStrs = info.days.map(localDateStr);
+    var label = capitalize(MONTH_LABELS[info.month]) + " " + info.year;
+    renderPeriodNav("month-nav", label, monthOffset < 0,
+      function(){ monthOffset -= 1; renderMonth(); },
+      function(){ if (monthOffset < 0){ monthOffset += 1; renderMonth(); } });
+
+    var pctSum=0, pctCount=0;
+    dateStrs.forEach(function(ds){ pctSum += dayPct(ds); pctCount++; });
+    var monthPct = pctCount>0 ? Math.round(pctSum/pctCount) : 0;
+    document.getElementById("month-pct").textContent = monthPct + "%";
+    document.getElementById("month-range").textContent = label;
+
+    var table = document.getElementById("heatmap-month");
+    var html = "<tr><th class='catcol'></th>";
+    info.days.forEach(function(d){ html += "<th>"+d.getDate()+"</th>"; });
+    html += "</tr>";
+    CAT_ORDER.forEach(function(cat){
+      html += "<tr><td class='rowlabel'>"+CATEGORIES[cat].label+"</td>";
+      dateStrs.forEach(function(ds){
+        var pct = catPctForDay(ds, cat);
+        var lvl = levelClass(pct);
+        var txt = pct>0 ? pct : "·";
+        html += "<td class='cell' style='background:var(--ramp-"+lvl+");color:"+(lvl>=3?"var(--accent-ink)":"var(--ink-2)")+";'>"+txt+"</td>";
+      });
+      html += "</tr>";
+    });
+    table.innerHTML = html;
+
+    var weeks = weeksInMonth(info.days);
+    var wkHost = document.getElementById("month-week-bars");
+    wkHost.innerHTML = "";
+    weeks.forEach(function(wdays, i){
+      var wsum = 0;
+      wdays.forEach(function(d){ wsum += dayPct(localDateStr(d)); });
+      var wavg = Math.round(wsum / wdays.length);
+      wkHost.appendChild(barRow("Semana " + (i+1), wavg));
+    });
+
+    var mbars = document.getElementById("month-bars");
+    mbars.innerHTML = "";
+    CAT_ORDER.forEach(function(cat){
+      var sum=0;
+      dateStrs.forEach(function(ds){ sum += catPctForDay(ds, cat); });
+      var avg = Math.round(sum/dateStrs.length);
+      mbars.appendChild(barRow(CATEGORIES[cat].label, avg));
+    });
+
+    var monthExtras = currentData().extras.filter(function(x){ return dateStrs.indexOf(x.date) !== -1; })
+      .sort(function(a,b){ return (a.ts||"").localeCompare(b.ts||""); });
+    var mex = document.getElementById("month-extras");
+    mex.innerHTML = "";
+    if (monthExtras.length === 0){
+      mex.innerHTML = '<div class="empty-hint">Nada fuera de la pauta registrado este mes.</div>';
+    } else {
+      monthExtras.forEach(function(x){
+        var chip = document.createElement("div");
+        chip.className = "log-chip extra-chip";
+        var dLabel = new Intl.DateTimeFormat("es-CL", {day:"numeric", month:"short"}).format(new Date(x.date + "T00:00:00"));
+        var mealTxt = x.meal==="—" ? "" : (x.meal + " · ");
+        chip.innerHTML = '<span><strong>'+escapeHtml(x.name)+'</strong> <span class="meta">'+mealTxt+dLabel+'</span></span>';
+        mex.appendChild(chip);
+      });
+    }
+  }
+
   function renderRegistrar(){
     renderMealRow();
     renderCatRows();
@@ -871,6 +1027,7 @@
     renderTabs();
     renderRegistrar();
     renderWeek();
+    renderMonth();
   }
 
   /* ---------- Mutations ---------- */
@@ -936,6 +1093,7 @@
 
   document.getElementById("tab-btn-registrar").addEventListener("click", function(){ activeTab="registrar"; renderTabs(); });
   document.getElementById("tab-btn-semana").addEventListener("click", function(){ activeTab="semana"; renderWeek(); renderTabs(); });
+  document.getElementById("tab-btn-mes").addEventListener("click", function(){ activeTab="mes"; renderMonth(); renderTabs(); });
 
   /* ---------- Toast ---------- */
   var toastTimer;

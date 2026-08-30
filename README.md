@@ -2,7 +2,7 @@
 
 Web app personal para registrar el cumplimiento de la pauta nutricional día a día, pensada para usarse desde el celular (agregada a la pantalla de inicio, funciona como una app).
 
-**App en vivo:** : link xxxx
+**App en vivo:** https://constanzaconcha252.github.io/seguimiento-pauta-alimentacion/seguimiento_nutricional.html
 
 ## Qué hace
 
@@ -12,7 +12,7 @@ Web app personal para registrar el cumplimiento de la pauta nutricional día a d
 - Arrastre de porciones pendientes: lo que no se completa en una comida se suma como meta extra a la siguiente, para no perderlo de vista.
 - Registro de alimentos "fuera de la pauta" (no cuentan para el cumplimiento, solo quedan anotados).
 - Chequeo diario de agua y creatina.
-- Vista semanal con % de cumplimiento por categoría y por día.
+- Vista semanal y vista mensual, cada una con su propio selector (‹ ›) para revisar cualquier semana o mes anterior: % de cumplimiento, mapa de calor por categoría y día, promedio por categoría, y lo registrado fuera de la pauta en ese período. La vista mensual además muestra el cumplimiento semana a semana dentro del mes.
 
 ## Dónde viven los datos
 
@@ -24,10 +24,14 @@ Como respaldo, la app puede conectarse a un Google Sheet y guardar ahí, en vivo
 
 1. Entra al repo en GitHub.
 2. "Add file" → "Upload files".
-3. Sube el `seguimiento_nutricional.html` actualizado (reemplaza al anterior).
+3. Sube el `seguimiento_nutricional.html` actualizado (reemplaza al anterior) — y `test_live.js` si también se actualizó.
 4. Commit changes.
 
 GitHub Pages se actualiza solo con el contenido de la rama `main`, no hace falta ningún paso extra.
+
+## Pruebas automatizadas
+
+`test_live.js` es un script de pruebas (Playwright) que verifica que la app funciona bien: los dos perfiles, el arrastre de porciones, las pestañas Semana y Mes con sus selectores, exportar/importar, etc. No hace falta correrlo a mano — está en el repo para que, la próxima vez que se le pida un cambio a Claude, pueda partir de él en vez de armar las pruebas de cero. Para correrlo manualmente (opcional, requiere Node.js y `npm i -g playwright`): `node test_live.js` en la misma carpeta que `seguimiento_nutricional.html`.
 
 ## Nota
 
