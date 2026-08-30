@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root{
     --bg:#F3F5F0;
@@ -292,6 +293,13 @@
     background:var(--surface-2); color:var(--ink); font-family:"IBM Plex Sans";
     font-weight:700; font-size:13.5px; cursor:pointer;
   }
+  .sheets-card{margin:0 20px 4px;}
+  .sheets-row{display:flex; align-items:center; gap:10px; justify-content:space-between;}
+  .sheets-status{font-size:12.5px; color:var(--ink-mute); display:flex; align-items:center; gap:6px;}
+  .sheets-dot{width:8px; height:8px; border-radius:50%; background:var(--ink-mute); flex:none;}
+  .sheets-dot[data-state="on"]{background:var(--good);}
+  .sheets-dot[data-state="syncing"]{background:var(--warn);}
+  .sheets-dot[data-state="error"]{background:var(--critical);}
 </style>
 </head>
 <body>
@@ -382,6 +390,15 @@
       <button class="btn-secondary" id="import-btn">Importar copia</button>
     </div>
     <input type="file" id="import-file" accept="application/json" style="display:none;">
+  </div>
+
+  <div class="card sheets-card">
+    <div class="section-label" style="margin-bottom:8px;">Respaldo en vivo (Google Sheets)</div>
+    <div class="backup-note">Cada vez que registras algo, se guarda además en un Google Sheet — así queda un respaldo fuera del teléfono, para ti y para Lorenzo.</div>
+    <div class="sheets-row">
+      <span class="sheets-status"><span class="sheets-dot" id="sheets-dot" data-state="off"></span><span id="sheets-status-text">No conectado</span></span>
+      <button class="btn-secondary" id="sheets-connect-btn" style="flex:none; padding:10px 16px;">Conectar con Google</button>
+    </div>
   </div>
 
   <div class="foot-note">Pauta de Jonathan Martínez Moya · vigente desde abril 2026</div>
@@ -932,11 +949,13 @@
 
   /* ---------- Persistence (localStorage, this browser only) ---------- */
   function persist(newState, toastMsg){
+    var oldState = STATE;
     STATE = newState;
     var ok = saveState(STATE);
     renderAll();
     if (toastMsg) showToast(toastMsg);
     if (!ok) showToast("No se pudo guardar en este navegador (¿modo privado?)");
+    syncStateDiff(oldState, newState);
   }
 
   /* ---------- Backup: export / import ---------- */
@@ -980,8 +999,167 @@
     e.target.value = "";
   });
 
+  /* ---------- Google Sheets live sync (best-effort — local save always wins first) ---------- */
+  var GOOGLE_CLIENT_ID = "9972358249-bpfadlcpqkoei8o2koiga2fmf6dr8ajf.apps.googleusercontent.com";
+  var GOOGLE_SPREADSHEET_ID = "1nxwXSnNnZpTKeMkIENlxpQXDx3wNw16lASKOm3gEwBE";
+  var GOOGLE_SCOPES = "https://www.googleapis.com/auth/spreadsheets";
+  var SHEETS_TABS = {
+    registro: {title:"Registro", header:["Persona","Fecha","Comida","Categoría","Porciones","Hora"]},
+    extras: {title:"Fuera de la pauta", header:["Persona","Fecha","Comida","Nombre","Hora"]},
+    chequeos: {title:"Chequeos", header:["Persona","Fecha","Agua","Creatina","Hora"]}
+  };
+  var gsiTokenClient = null;
+  var googleAccessToken = null;
+  var googleTokenExpiresAt = 0;
+  var sheetStructureReady = false;
+  var GSHEETS_LS_KEY = "pautaAlDiaGoogleConnected.v1";
+
+  function setSheetsStatus(state, text){
+    var dot = document.getElementById("sheets-dot");
+    var txt = document.getElementById("sheets-status-text");
+    var btn = document.getElementById("sheets-connect-btn");
+    if (!dot || !txt) return;
+    dot.setAttribute("data-state", state);
+    txt.textContent = text;
+    if (btn) btn.textContent = (state === "on" || state === "syncing") ? "Conectado" : "Conectar con Google";
+  }
+
+  function haveValidToken(){
+    return !!googleAccessToken && Date.now() < googleTokenExpiresAt - 30000;
+  }
+
+  function initGoogleAuth(){
+    if (!window.google || !google.accounts || !google.accounts.oauth2){
+      setTimeout(initGoogleAuth, 500); // GIS script still loading
+      return;
+    }
+    gsiTokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: GOOGLE_SCOPES,
+      callback: function(resp){
+        if (resp && resp.access_token){
+          googleAccessToken = resp.access_token;
+          googleTokenExpiresAt = Date.now() + (Number(resp.expires_in || 3500) * 1000);
+          try { localStorage.setItem(GSHEETS_LS_KEY, "1"); } catch(e){}
+          setSheetsStatus("syncing", "Conectando…");
+          ensureSheetStructure().then(function(){
+            setSheetsStatus("on", "Conectado");
+          }).catch(function(){
+            setSheetsStatus("error", "Conectado, pero hubo un error preparando el Sheet");
+          });
+        } else {
+          setSheetsStatus("error", "No se pudo conectar");
+        }
+      }
+    });
+    document.getElementById("sheets-connect-btn").addEventListener("click", function(){
+      if (haveValidToken()) return;
+      gsiTokenClient.requestAccessToken({ prompt: "consent" });
+    });
+    var wasConnected = false;
+    try { wasConnected = localStorage.getItem(GSHEETS_LS_KEY) === "1"; } catch(e){}
+    if (wasConnected){
+      setSheetsStatus("syncing", "Reconectando…");
+      gsiTokenClient.requestAccessToken({ prompt: "" });
+    }
+  }
+
+  function sheetsApiFetch(path, opts){
+    opts = opts || {};
+    var headers = opts.headers || {};
+    headers["Authorization"] = "Bearer " + googleAccessToken;
+    if (opts.body) headers["Content-Type"] = "application/json";
+    return fetch("https://sheets.googleapis.com/v4/spreadsheets/" + GOOGLE_SPREADSHEET_ID + path, {
+      method: opts.method || "GET",
+      headers: headers,
+      body: opts.body ? JSON.stringify(opts.body) : undefined
+    }).then(function(r){
+      if (r.status === 401){
+        googleAccessToken = null;
+        setSheetsStatus("error", "Se cerró la conexión, reconecta");
+        throw new Error("token expired");
+      }
+      if (!r.ok) throw new Error("sheets api error " + r.status);
+      return r.json();
+    });
+  }
+
+  function ensureSheetStructure(){
+    if (sheetStructureReady) return Promise.resolve();
+    return sheetsApiFetch("?fields=sheets.properties.title", {}).then(function(meta){
+      var existing = (meta.sheets || []).map(function(s){ return s.properties.title; });
+      var missing = Object.keys(SHEETS_TABS).map(function(k){ return SHEETS_TABS[k]; }).filter(function(t){ return existing.indexOf(t.title) === -1; });
+      var chain = Promise.resolve();
+      if (missing.length){
+        chain = sheetsApiFetch(":batchUpdate", {
+          method: "POST",
+          body: { requests: missing.map(function(t){ return { addSheet: { properties: { title: t.title } } }; }) }
+        });
+      }
+      return chain.then(function(){
+        var headerWrites = Object.keys(SHEETS_TABS).map(function(k){
+          var t = SHEETS_TABS[k];
+          if (existing.indexOf(t.title) !== -1) return Promise.resolve();
+          return sheetsApiFetch("/values/" + encodeURIComponent(t.title + "!A1") + "?valueInputOption=RAW", {
+            method: "PUT",
+            body: { values: [t.header] }
+          });
+        });
+        return Promise.all(headerWrites);
+      });
+    }).then(function(){
+      sheetStructureReady = true;
+    });
+  }
+
+  function appendToSheet(tabKey, rows){
+    if (!rows.length) return;
+    if (!haveValidToken()) return; // not connected — the local save already went through, this is best-effort only
+    ensureSheetStructure().then(function(){
+      var title = SHEETS_TABS[tabKey].title;
+      return sheetsApiFetch("/values/" + encodeURIComponent(title + "!A1") + ":append?valueInputOption=USER_ENTERED", {
+        method: "POST",
+        body: { values: rows }
+      });
+    }).catch(function(){
+      setSheetsStatus("error", "No se pudo sincronizar lo último — sigue guardado en el teléfono");
+    });
+  }
+
+  function syncStateDiff(oldState, newState){
+    if (!haveValidToken()) return;
+    PROFILES.forEach(function(p){
+      var oldD = (oldState && oldState.profiles && oldState.profiles[p]) || blankProfileData();
+      var newD = newState.profiles[p];
+      var oldLogIds = {}; oldD.logs.forEach(function(l){ oldLogIds[l.id] = true; });
+      var newLogs = newD.logs.filter(function(l){ return !oldLogIds[l.id]; });
+      if (newLogs.length){
+        appendToSheet("registro", newLogs.map(function(l){
+          return [p, l.date, l.meal, CATEGORIES[l.category] ? CATEGORIES[l.category].label : l.category, l.portions, l.time];
+        }));
+      }
+      var oldExtraIds = {}; oldD.extras.forEach(function(x){ oldExtraIds[x.id] = true; });
+      var newExtras = newD.extras.filter(function(x){ return !oldExtraIds[x.id]; });
+      if (newExtras.length){
+        appendToSheet("extras", newExtras.map(function(x){
+          return [p, x.date, x.meal, x.name, x.time];
+        }));
+      }
+      var changedCheckDates = Object.keys(newD.checks).filter(function(d){
+        return JSON.stringify(newD.checks[d]) !== JSON.stringify(oldD.checks[d]);
+      });
+      if (changedCheckDates.length){
+        appendToSheet("chequeos", changedCheckDates.map(function(d){
+          var c = newD.checks[d] || {};
+          return [p, d, !!c.agua, !!c.creatina, new Date().toLocaleTimeString("es-CL", {hour:"2-digit", minute:"2-digit"})];
+        }));
+      }
+    });
+  }
+
   /* ---------- Init ---------- */
   renderAll();
+  initGoogleAuth();
 })();
 </script>
 </body>
