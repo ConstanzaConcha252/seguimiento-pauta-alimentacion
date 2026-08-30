@@ -1,0 +1,988 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Pauta al Día</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+  :root{
+    --bg:#F3F5F0;
+    --surface:#FFFFFF;
+    --surface-2:#E9EEE6;
+    --border:#DCE3D8;
+    --ink:#1E271F;
+    --ink-2:#556155;
+    --ink-mute:#8B968A;
+    --accent:#2B6E75;
+    --accent-ink:#FFFFFF;
+    --accent-soft:#DCEBEC;
+    --good:#3C8B4A;
+    --good-soft:#DDEEE0;
+    --warn:#C48A1D;
+    --warn-soft:#F3E7CE;
+    --critical:#B94A3D;
+    --critical-soft:#F5DEDA;
+    --ramp-0:#EDEFEA;
+    --ramp-1:#CFE0DC;
+    --ramp-2:#9FC5C0;
+    --ramp-3:#5FA0A3;
+    --ramp-4:#2B6E75;
+    --shadow: 0 1px 2px rgba(30,39,31,.06), 0 8px 24px -12px rgba(30,39,31,.18);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#121B18;
+      --surface:#19241F;
+      --surface-2:#213028;
+      --border:#2B3A34;
+      --ink:#ECF2ED;
+      --ink-2:#AEC0B2;
+      --ink-mute:#7C9086;
+      --accent:#63BAC2;
+      --accent-ink:#0E1A18;
+      --accent-soft:#20393A;
+      --good:#6FCB80;
+      --good-soft:#1F3527;
+      --warn:#E0AC4E;
+      --warn-soft:#3A2E17;
+      --critical:#E28576;
+      --critical-soft:#3B241F;
+      --ramp-0:#1C2823;
+      --ramp-1:#25423F;
+      --ramp-2:#316765;
+      --ramp-3:#498E92;
+      --ramp-4:#63BAC2;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.5);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#121B18;
+    --surface:#19241F;
+    --surface-2:#213028;
+    --border:#2B3A34;
+    --ink:#ECF2ED;
+    --ink-2:#AEC0B2;
+    --ink-mute:#7C9086;
+    --accent:#63BAC2;
+    --accent-ink:#0E1A18;
+    --accent-soft:#20393A;
+    --good:#6FCB80;
+    --good-soft:#1F3527;
+    --warn:#E0AC4E;
+    --warn-soft:#3A2E17;
+    --critical:#E28576;
+    --critical-soft:#3B241F;
+    --ramp-0:#1C2823;
+    --ramp-1:#25423F;
+    --ramp-2:#316765;
+    --ramp-3:#498E92;
+    --ramp-4:#63BAC2;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.5);
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:"IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+    display:flex;
+    justify-content:center;
+  }
+  .app{
+    width:100%;
+    max-width:480px;
+    min-height:100vh;
+    background:var(--bg);
+    display:flex;
+    flex-direction:column;
+    padding-bottom:40px;
+  }
+  h1,h2,h3{
+    font-family:"Fraunces", Georgia, serif;
+    font-weight:600;
+    text-wrap:balance;
+    margin:0;
+  }
+  header.top{
+    position:sticky; top:0; z-index:5;
+    background:var(--bg);
+    padding:18px 20px 10px;
+    border-bottom:1px solid var(--border);
+  }
+  .wordmark{
+    display:flex; align-items:baseline; justify-content:space-between; gap:10px;
+  }
+  .wordmark h1{font-size:22px; letter-spacing:.2px;}
+  .today-date{
+    font-size:12.5px; color:var(--ink-2); margin-top:2px; text-transform:capitalize;
+  }
+  .streak-pill{
+    font-family:"IBM Plex Sans"; font-weight:600; font-size:13px;
+    background:var(--accent-soft); color:var(--accent);
+    border-radius:999px; padding:6px 12px; white-space:nowrap;
+  }
+  nav.tabs{
+    display:flex; gap:4px; margin-top:14px;
+    background:var(--surface-2); border-radius:12px; padding:4px;
+  }
+  nav.tabs button{
+    flex:1; border:0; background:transparent; padding:9px 10px;
+    font-family:"IBM Plex Sans"; font-weight:600; font-size:13.5px;
+    color:var(--ink-2); border-radius:9px; cursor:pointer;
+  }
+  nav.tabs button[aria-selected="true"]{
+    background:var(--surface); color:var(--ink); box-shadow:var(--shadow);
+  }
+  main{padding:16px 20px 0; display:flex; flex-direction:column; gap:18px;}
+  section{display:none;}
+  section.active{display:flex; flex-direction:column; gap:18px;}
+
+  .profile-row{display:flex; gap:6px; margin-top:12px;}
+  .profile-chip{
+    flex:1; border:1px solid var(--border); background:var(--surface);
+    color:var(--ink-2); font-family:"IBM Plex Sans"; font-weight:700; font-size:13px;
+    padding:8px 10px; border-radius:10px; cursor:pointer; text-align:center;
+  }
+  .profile-chip[aria-selected="true"]{
+    background:var(--accent); border-color:var(--accent); color:var(--accent-ink);
+  }
+
+  .meal-row{display:flex; gap:6px; overflow-x:auto; padding-bottom:2px;}
+  .meal-chip{
+    flex:0 0 auto; border:1px solid var(--border); background:var(--surface);
+    color:var(--ink-2); font-family:"IBM Plex Sans"; font-weight:600; font-size:13px;
+    padding:8px 14px; border-radius:999px; cursor:pointer;
+  }
+  .meal-chip[aria-selected="true"]{
+    background:var(--accent); border-color:var(--accent); color:var(--accent-ink);
+  }
+
+  .card{
+    background:var(--surface); border:1px solid var(--border); border-radius:16px;
+    padding:14px 16px; box-shadow:var(--shadow);
+  }
+  .card + .card{margin-top:0;}
+  .cat-row{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:10px 0; border-bottom:1px solid var(--border);
+  }
+  .cat-row:last-child{border-bottom:0;}
+  .cat-name{font-weight:600; font-size:14.5px;}
+  .cat-target{font-size:11.5px; color:var(--ink-mute); margin-top:1px;}
+  .carry-note{color:var(--warn); font-weight:600;}
+  .stepper{display:flex; align-items:center; gap:10px;}
+  .stepper button{
+    width:32px; height:32px; border-radius:9px; border:1px solid var(--border);
+    background:var(--surface-2); color:var(--ink); font-size:17px; line-height:1;
+    cursor:pointer; display:flex; align-items:center; justify-content:center;
+    font-family:"IBM Plex Sans"; font-weight:600;
+  }
+  .stepper button:active{background:var(--accent-soft); color:var(--accent);}
+  .stepper .val{min-width:30px; text-align:center; font-weight:700; font-size:15px;}
+
+  .save-btn{
+    width:100%; border:0; border-radius:12px; padding:13px; margin-top:2px;
+    background:var(--accent); color:var(--accent-ink); font-family:"IBM Plex Sans";
+    font-weight:700; font-size:14.5px; cursor:pointer;
+  }
+  .save-btn:disabled{opacity:.45; cursor:default;}
+
+  .meal-actions{display:flex; gap:8px; margin-top:2px;}
+  .meal-actions .save-btn{flex:2; margin-top:0;}
+  .meal-actions .skip-btn{flex:1; margin-top:0; font-size:13px;}
+
+  .extra-row{display:flex; gap:8px; margin-top:12px; padding-top:12px; border-top:1px dashed var(--border);}
+  .extra-row input{
+    flex:1; min-width:0; border:1px solid var(--border); border-radius:10px; padding:10px 12px;
+    font-family:"IBM Plex Sans"; font-size:13.5px; color:var(--ink); background:var(--surface);
+  }
+  .extra-row input::placeholder{color:var(--ink-mute);}
+  .extra-row button{
+    border:0; border-radius:10px; padding:0 14px; background:var(--surface-2); color:var(--ink);
+    font-family:"IBM Plex Sans"; font-weight:700; font-size:13px; cursor:pointer;
+  }
+
+  .extra-chip{background:var(--warn-soft) !important;}
+  .extra-chip .tag{
+    display:inline-block; font-size:10px; font-weight:700; letter-spacing:.03em; text-transform:uppercase;
+    color:var(--warn); margin-right:5px;
+  }
+
+  .toggle-row{display:flex; gap:8px;}
+  .toggle-chip{
+    flex:1; display:flex; align-items:center; justify-content:center; gap:6px;
+    border:1px solid var(--border); background:var(--surface); border-radius:12px;
+    padding:11px 8px; cursor:pointer; font-weight:600; font-size:13.5px; color:var(--ink-2);
+  }
+  .toggle-chip[data-on="true"]{
+    background:var(--good-soft); border-color:var(--good); color:var(--good);
+  }
+
+  .section-label{
+    font-size:11.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--ink-mute);
+  }
+
+  .bar-row{display:flex; flex-direction:column; gap:5px; padding:7px 0;}
+  .bar-row .top{display:flex; justify-content:space-between; font-size:12.5px;}
+  .bar-row .top .name{color:var(--ink-2); font-weight:600;}
+  .bar-row .top .pct{font-weight:700; font-variant-numeric:tabular-nums;}
+  .bar-track{height:8px; border-radius:99px; background:var(--surface-2); overflow:hidden;}
+  .bar-fill{height:100%; border-radius:99px; background:var(--accent);}
+
+  .today-list{display:flex; flex-direction:column; gap:6px;}
+  .log-chip{
+    display:flex; align-items:center; justify-content:space-between;
+    background:var(--surface-2); border-radius:10px; padding:8px 10px; font-size:12.5px;
+  }
+  .log-chip span.meta{color:var(--ink-2);}
+  .log-chip button{
+    border:0; background:transparent; color:var(--ink-mute); font-size:15px; cursor:pointer;
+    padding:2px 4px;
+  }
+  .empty-hint{
+    color:var(--ink-mute); font-size:13px; text-align:center; padding:18px 10px;
+  }
+
+  .stat-tile{
+    background:var(--surface); border:1px solid var(--border); border-radius:16px;
+    padding:18px 18px 16px; box-shadow:var(--shadow); text-align:center;
+  }
+  .stat-tile .num{font-family:"Fraunces"; font-size:44px; font-weight:700; line-height:1;}
+  .stat-tile .lbl{font-size:12.5px; color:var(--ink-2); margin-top:6px;}
+  .week-range{font-size:11.5px; color:var(--ink-mute); margin-top:4px;}
+
+  .heatmap{width:100%; border-collapse:separate; border-spacing:3px;}
+  .heatmap th{
+    font-size:10.5px; font-weight:600; color:var(--ink-mute); padding-bottom:4px;
+  }
+  .heatmap th.catcol{text-align:left; font-size:11px; color:var(--ink-2);}
+  .heatmap td.cell{
+    width:13%; height:30px; border-radius:6px; text-align:center;
+    font-size:10.5px; font-weight:700; vertical-align:middle;
+  }
+  .heatmap td.rowlabel{
+    text-align:left; font-size:11.5px; font-weight:600; color:var(--ink-2); padding-right:4px;
+    white-space:nowrap;
+  }
+
+  .toast{
+    position:fixed; left:50%; bottom:22px; transform:translate(-50%, 12px);
+    background:var(--ink); color:var(--bg); font-size:13px; font-weight:600;
+    padding:10px 16px; border-radius:999px; opacity:0; pointer-events:none;
+    transition:opacity .18s ease, transform .18s ease; z-index:20; max-width:88%; text-align:center;
+  }
+  .toast.show{opacity:1; transform:translate(-50%, 0);}
+
+  .foot-note{font-size:11px; color:var(--ink-mute); text-align:center; padding:6px 10px 0;}
+  .backup-card{margin:0 20px 4px;}
+  .backup-note{font-size:12px; color:var(--ink-mute); margin-bottom:10px; line-height:1.4;}
+  .backup-row{display:flex; gap:8px;}
+  .backup-row .save-btn{width:auto; flex:1; margin-top:0;}
+  .btn-secondary{
+    flex:1; border:1px solid var(--border); border-radius:12px; padding:12px; margin-top:0;
+    background:var(--surface-2); color:var(--ink); font-family:"IBM Plex Sans";
+    font-weight:700; font-size:13.5px; cursor:pointer;
+  }
+</style>
+</head>
+<body>
+
+<div class="app" id="app">
+  <header class="top">
+    <div class="wordmark">
+      <div>
+        <h1>Pauta al Día</h1>
+        <div class="today-date" id="today-date"></div>
+      </div>
+      <div class="streak-pill" id="today-pct">—</div>
+    </div>
+    <div class="profile-row" id="profile-row"></div>
+    <nav class="tabs" role="tablist">
+      <button role="tab" id="tab-btn-registrar" aria-selected="true">Registrar</button>
+      <button role="tab" id="tab-btn-semana" aria-selected="false">Semana</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="tab-registrar" class="active">
+      <div class="meal-row" id="meal-row"></div>
+
+      <div class="card">
+        <div id="cat-rows"></div>
+        <div class="meal-actions">
+          <button class="save-btn" id="save-meal-btn">Guardar comida</button>
+          <button class="btn-secondary skip-btn" id="skip-meal-btn" title="Pasar a la siguiente comida sin registrar nada">Saltar →</button>
+        </div>
+        <div class="extra-row">
+          <input type="text" id="extra-input" placeholder="Algo fuera de la pauta (ej: helado, copete)…" maxlength="80">
+          <button id="extra-add-btn">Agregar</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-label" style="margin-bottom:10px;">Otros de hoy</div>
+        <div class="cat-row" id="aceites-row" style="border-bottom:1px solid var(--border); margin-bottom:10px; padding-top:0;"></div>
+        <div class="toggle-row">
+          <div class="toggle-chip" id="chip-agua" data-key="agua">💧 Agua 2,2 L</div>
+          <div class="toggle-chip" id="chip-creatina" data-key="creatina">Creatina 6 g</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-label" style="margin-bottom:8px;">Registrado hoy</div>
+        <div class="today-list" id="today-list"></div>
+      </div>
+
+      <div>
+        <div class="section-label" style="margin-bottom:4px;">Avance de hoy</div>
+        <div class="card" id="today-bars"></div>
+      </div>
+    </section>
+
+    <section id="tab-semana">
+      <div class="stat-tile">
+        <div class="num" id="week-pct">—%</div>
+        <div class="lbl">cumplimiento promedio de la semana</div>
+        <div class="week-range" id="week-range"></div>
+      </div>
+
+      <div class="card">
+        <div class="section-label" style="margin-bottom:10px;">Por categoría y día</div>
+        <div style="overflow-x:auto;">
+          <table class="heatmap" id="heatmap"></table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-label" style="margin-bottom:6px;">Promedio semanal por categoría</div>
+        <div id="week-bars"></div>
+      </div>
+
+      <div class="card">
+        <div class="section-label" style="margin-bottom:8px;">Fuera de la pauta esta semana</div>
+        <div class="today-list" id="week-extras"></div>
+      </div>
+    </section>
+  </main>
+
+  <div class="card backup-card">
+    <div class="section-label" style="margin-bottom:8px;">Copia de respaldo</div>
+    <div class="backup-note">Descarga tus datos de vez en cuando como respaldo — te sirve para tenerlos a mano o para llevarlos a otra copia de la app si alguna vez la necesitas.</div>
+    <div class="backup-row">
+      <button class="save-btn" id="export-btn">Exportar copia</button>
+      <button class="btn-secondary" id="import-btn">Importar copia</button>
+    </div>
+    <input type="file" id="import-file" accept="application/json" style="display:none;">
+  </div>
+
+  <div class="foot-note">Pauta de Jonathan Martínez Moya · vigente desde abril 2026</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------- Reference data (fixed, from la pauta) ---------- */
+  var CAT_ORDER = ["CEREALES","CARNES","FRUTAS","VCG","VLC","LEP","ACEITES","ARL"];
+  var CATEGORIES = {
+    CEREALES:{label:"Cereales", hint:"pan, arroz, avena, papas, quínoa..."},
+    CARNES:{label:"Proteína", hint:"carnes magras, huevo, pollo, atún, soya..."},
+    FRUTAS:{label:"Fruta", hint:""},
+    VCG:{label:"Verduras cocidas", hint:"brócoli, zanahoria, tomate, zapallo..."},
+    VLC:{label:"Verduras hoja", hint:"lechuga, pepino, espinaca, apio..."},
+    LEP:{label:"Lácteos proteicos", hint:"yogurt / leche protein+"},
+    ACEITES:{label:"Aceites", hint:"para preparaciones"},
+    ARL:{label:"Frutos secos / palta", hint:""}
+  };
+  // Each profile has its own meal structure and daily category goals — Coni and
+  // Lorenzo follow different nutrition plans from their nutritionist.
+  var PROFILE_CONFIG = {
+    Coni: {
+      meals: [
+        {key:"Desayuno", targets:{CEREALES:1.5, CARNES:2, FRUTAS:1}},
+        {key:"Almuerzo", targets:{CEREALES:1.5, CARNES:3, VLC:1, VCG:1}},
+        {key:"Colación PM", targets:{LEP:1, FRUTAS:2, ARL:0.5}},
+        {key:"Once", targets:{CEREALES:2, CARNES:3, VLC:1, VCG:1}}
+      ],
+      dailyTargets: {CEREALES:5, CARNES:8, FRUTAS:3, VCG:2, VLC:2, LEP:1, ACEITES:1, ARL:0.5}
+    },
+    Lorenzo: {
+      meals: [
+        {key:"Desayuno", targets:{CEREALES:2, CARNES:3, FRUTAS:1}},
+        {key:"Colación AM", targets:{FRUTAS:2, LEP:1}},
+        {key:"Almuerzo", targets:{CEREALES:2, CARNES:3, VLC:1, VCG:1}},
+        {key:"Colación PM", targets:{CEREALES:1.5, LEP:1, ARL:1}},
+        {key:"Once", targets:{CEREALES:1.5, CARNES:3, VLC:1, VCG:1}}
+      ],
+      // ACEITES no viene especificado en la pauta de Lorenzo por comida ni como meta
+      // diaria explícita — se asume la misma meta diaria de 1 porción que Coni hasta
+      // que él confirme la suya.
+      dailyTargets: {CEREALES:7, CARNES:9, FRUTAS:3, VCG:2, VLC:2, LEP:2, ACEITES:1, ARL:1}
+    }
+  };
+  var DOW_LABELS = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
+  function activeMeals(){ return PROFILE_CONFIG[STATE.activeProfile].meals; }
+  function activeDailyTargets(){ return PROFILE_CONFIG[STATE.activeProfile].dailyTargets; }
+  function activeMealOrder(){ return activeMeals().map(function(m){ return m.key; }); }
+  function nextMealOf(current){
+    var order = activeMealOrder();
+    var idx = order.indexOf(current);
+    if (idx < 0 || idx >= order.length - 1) return null;
+    return order[idx + 1];
+  }
+
+  /* ---------- State (persisted in this browser's localStorage) ---------- */
+  var LS_KEY = "pautaAlDiaState.v1";
+  var PROFILES = ["Coni", "Lorenzo"];
+  function blankProfileData(){ return {logs:[], checks:{}, extras:[]}; }
+  function normalizeProfileData(d){
+    if (!d || typeof d !== "object") d = {};
+    if (!Array.isArray(d.logs)) d.logs = [];
+    if (!d.checks || typeof d.checks !== "object") d.checks = {};
+    if (!Array.isArray(d.extras)) d.extras = [];
+    return d;
+  }
+  function loadState(){
+    var raw = null;
+    try { raw = localStorage.getItem(LS_KEY); } catch(e){}
+    var s = null;
+    try { s = raw ? JSON.parse(raw) : null; } catch(e){ s = null; }
+    if (!s || typeof s !== "object") s = {};
+    if (!s.profiles || typeof s.profiles !== "object"){
+      // Migrate legacy single-person state (flat logs/checks/extras) into "Coni",
+      // since that's the profile that was already using the app before this feature.
+      var legacy = normalizeProfileData({logs: s.logs, checks: s.checks, extras: s.extras});
+      s = {activeProfile: "Coni", profiles: {Coni: legacy, Lorenzo: blankProfileData()}};
+    }
+    PROFILES.forEach(function(p){ s.profiles[p] = normalizeProfileData(s.profiles[p]); });
+    if (PROFILES.indexOf(s.activeProfile) === -1) s.activeProfile = PROFILES[0];
+    return s;
+  }
+  function saveState(s){
+    try { localStorage.setItem(LS_KEY, JSON.stringify(s)); return true; }
+    catch(e){ return false; }
+  }
+  var STATE = loadState();
+  function currentData(){ return STATE.profiles[STATE.activeProfile]; }
+
+  var draft = {}; // ephemeral stepper values for the active meal, category -> portions
+  var activeMeal = autoMeal();
+  var activeTab = "registrar";
+
+  /* ---------- Date helpers ---------- */
+  function localDateStr(d){
+    var y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,"0"), day=String(d.getDate()).padStart(2,"0");
+    return y+"-"+m+"-"+day;
+  }
+  function todayStr(){ return localDateStr(new Date()); }
+  function autoMeal(profile){
+    var prof = profile || STATE.activeProfile;
+    var h = new Date().getHours();
+    if (prof === "Lorenzo"){
+      if (h<9) return "Desayuno";
+      if (h<12) return "Colación AM";
+      if (h<16) return "Almuerzo";
+      if (h<18) return "Colación PM";
+      return "Once";
+    }
+    if (h<11) return "Desayuno";
+    if (h<16) return "Almuerzo";
+    if (h<18) return "Colación PM";
+    return "Once";
+  }
+  function startOfWeek(d){
+    var day = d.getDay();
+    var diff = (day===0? -6 : 1-day);
+    var mon = new Date(d);
+    mon.setDate(d.getDate()+diff);
+    mon.setHours(0,0,0,0);
+    return mon;
+  }
+  function weekDates(anchor){
+    var mon = startOfWeek(anchor);
+    var out = [];
+    for (var i=0;i<7;i++){ var dt=new Date(mon); dt.setDate(mon.getDate()+i); out.push(dt); }
+    return out;
+  }
+  function capitalize(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
+
+  /* ---------- Derived data ---------- */
+  function dayTotals(dateStr){
+    var totals = {}; CAT_ORDER.forEach(function(c){ totals[c]=0; });
+    currentData().logs.forEach(function(l){ if (l.date===dateStr && totals.hasOwnProperty(l.category)) totals[l.category]+=l.portions; });
+    return totals;
+  }
+  function dayPct(dateStr){
+    var totals = dayTotals(dateStr);
+    var goals = activeDailyTargets();
+    var sumC=0, sumT=0;
+    CAT_ORDER.forEach(function(c){ sumC += Math.min(totals[c], goals[c]); sumT += goals[c]; });
+    return sumT>0 ? Math.round(100*sumC/sumT) : 0;
+  }
+  function catPctForDay(dateStr, cat){
+    var t = dayTotals(dateStr)[cat] || 0;
+    var target = activeDailyTargets()[cat] || 0;
+    if (target<=0) return 0;
+    return Math.round(100*t/target);
+  }
+
+  // Porciones que no se completaron en comidas anteriores de HOY y que por
+  // eso se suman a la meta de la comida activa (para que no se pierdan).
+  function mealCarryover(mealKey){
+    var order = activeMealOrder();
+    var idx = order.indexOf(mealKey);
+    if (idx <= 0) return {};
+    var today = todayStr();
+    var carry = {}; // running carry-in, accumulated meal by meal up to (not including) mealKey
+    var meals = activeMeals();
+    for (var i=0;i<idx;i++){
+      var m = meals[i];
+      var cats = {};
+      Object.keys(m.targets).forEach(function(c){ cats[c] = true; });
+      Object.keys(carry).forEach(function(c){ cats[c] = true; });
+      var nextCarry = {};
+      Object.keys(cats).forEach(function(cat){
+        var target = round1((m.targets[cat] || 0) + (carry[cat] || 0));
+        var logged = 0;
+        currentData().logs.forEach(function(l){
+          if (l.date===today && l.meal===m.key && l.category===cat) logged += l.portions;
+        });
+        var shortfall = round1(Math.max(0, target - logged));
+        if (shortfall > 0) nextCarry[cat] = shortfall;
+      });
+      carry = nextCarry;
+    }
+    return carry;
+  }
+
+  /* ---------- Rendering ---------- */
+  function renderHeader(){
+    var d = new Date();
+    var fmt = new Intl.DateTimeFormat("es-CL", {weekday:"long", day:"numeric", month:"long"}).format(d);
+    document.getElementById("today-date").textContent = capitalize(fmt);
+    var pct = dayPct(todayStr());
+    document.getElementById("today-pct").textContent = pct + "% hoy";
+  }
+
+  function renderTabs(){
+    document.getElementById("tab-btn-registrar").setAttribute("aria-selected", activeTab==="registrar");
+    document.getElementById("tab-btn-semana").setAttribute("aria-selected", activeTab==="semana");
+    document.getElementById("tab-registrar").className = activeTab==="registrar" ? "active" : "";
+    document.getElementById("tab-semana").className = activeTab==="semana" ? "active" : "";
+  }
+
+  function renderProfileRow(){
+    var host = document.getElementById("profile-row");
+    host.innerHTML = "";
+    PROFILES.forEach(function(p){
+      var b = document.createElement("button");
+      b.className = "profile-chip";
+      b.textContent = p;
+      b.setAttribute("aria-selected", p === STATE.activeProfile);
+      b.addEventListener("click", function(){
+        if (p === STATE.activeProfile) return;
+        var newState = cloneState();
+        newState.activeProfile = p;
+        draft = {};
+        activeMeal = autoMeal();
+        persist(newState, "Registrando para " + p);
+      });
+      host.appendChild(b);
+    });
+  }
+
+  function renderMealRow(){
+    var row = document.getElementById("meal-row");
+    row.innerHTML = "";
+    activeMeals().forEach(function(m){
+      var b = document.createElement("button");
+      b.className = "meal-chip";
+      b.textContent = m.key;
+      b.setAttribute("aria-selected", m.key===activeMeal);
+      b.addEventListener("click", function(){ activeMeal = m.key; draft = {}; renderRegistrar(); });
+      row.appendChild(b);
+    });
+  }
+
+  function stepperRow(catKey, target, value, onChange, carryPortions){
+    var wrap = document.createElement("div");
+    wrap.className = "cat-row";
+    var left = document.createElement("div");
+    var carryNote = carryPortions ? ' <span class="carry-note">· incluye '+fmtNum(carryPortions)+' pendiente'+(carryPortions===1?"":"s")+' de antes</span>' : '';
+    left.innerHTML = '<div class="cat-name">'+CATEGORIES[catKey].label+'</div><div class="cat-target">meta '+fmtNum(target)+' porc.'+(CATEGORIES[catKey].hint?" · "+CATEGORIES[catKey].hint:"")+carryNote+'</div>';
+    var stepper = document.createElement("div");
+    stepper.className = "stepper";
+    var minus = document.createElement("button"); minus.textContent = "–";
+    var val = document.createElement("div"); val.className = "val"; val.textContent = fmtNum(value);
+    var plus = document.createElement("button"); plus.textContent = "+";
+    minus.addEventListener("click", function(){ onChange(Math.max(0, round1(value-0.5))); });
+    plus.addEventListener("click", function(){ onChange(round1(value+0.5)); });
+    stepper.appendChild(minus); stepper.appendChild(val); stepper.appendChild(plus);
+    wrap.appendChild(left); wrap.appendChild(stepper);
+    return wrap;
+  }
+  function round1(n){ return Math.round(n*10)/10; }
+  function fmtNum(n){
+    n = round1(n);
+    return (n % 1 === 0) ? String(n) : String(n).replace(".", ",");
+  }
+
+  function renderCatRows(){
+    var host = document.getElementById("cat-rows");
+    host.innerHTML = "";
+    var meal = activeMeals().filter(function(m){ return m.key===activeMeal; })[0];
+    var carry = mealCarryover(activeMeal);
+    var cats = CAT_ORDER.filter(function(cat){
+      return (meal.targets[cat] || 0) > 0 || (carry[cat] || 0) > 0;
+    });
+    cats.forEach(function(cat){
+      var extra = carry[cat] || 0;
+      var target = round1((meal.targets[cat] || 0) + extra);
+      var value = draft[cat] || 0;
+      var row = stepperRow(cat, target, value, function(nv){
+        draft[cat] = nv; renderCatRows(); updateSaveBtn();
+      }, extra);
+      host.appendChild(row);
+    });
+    updateSaveBtn();
+  }
+  function updateSaveBtn(){
+    var btn = document.getElementById("save-meal-btn");
+    var any = Object.keys(draft).some(function(k){ return draft[k] > 0; });
+    btn.disabled = !any;
+    btn.textContent = any ? ("Guardar " + activeMeal.toLowerCase()) : "Marca alguna porción para guardar";
+  }
+
+  function renderAceites(){
+    var host = document.getElementById("aceites-row");
+    host.innerHTML = "";
+    var today = todayStr();
+    var value = dayTotals(today).ACEITES;
+    var row = stepperRow("ACEITES", activeDailyTargets().ACEITES, value, function(nv){
+      var delta = round1(nv - value);
+      if (delta === 0) return;
+      addLog("—", "ACEITES", delta);
+    });
+    host.appendChild(row);
+  }
+
+  function renderToggles(){
+    var today = todayStr();
+    var checks = currentData().checks[today] || {};
+    ["agua","creatina"].forEach(function(key){
+      var chip = document.getElementById("chip-"+key);
+      chip.setAttribute("data-on", !!checks[key]);
+      chip.onclick = function(){
+        var newState = cloneState();
+        var d = newState.profiles[newState.activeProfile];
+        if (!d.checks[today]) d.checks[today] = {};
+        d.checks[today][key] = !checks[key];
+        persist(newState, checks[key] ? "Desmarcado" : "¡Anotado!");
+      };
+    });
+  }
+
+  function renderTodayList(){
+    var host = document.getElementById("today-list");
+    var today = todayStr();
+    var todayLogs = currentData().logs.filter(function(l){ return l.date===today; }).map(function(l){ return {kind:"log", item:l}; });
+    var todayExtras = currentData().extras.filter(function(x){ return x.date===today; }).map(function(x){ return {kind:"extra", item:x}; });
+    var todays = todayLogs.concat(todayExtras).sort(function(a,b){ return (a.item.ts||"").localeCompare(b.item.ts||""); });
+    host.innerHTML = "";
+    if (todays.length===0){
+      host.innerHTML = '<div class="empty-hint">Aún no registras nada hoy. Elige una comida arriba y guarda tus porciones.</div>';
+      return;
+    }
+    todays.forEach(function(entry){
+      var chip = document.createElement("div");
+      if (entry.kind === "extra"){
+        var x = entry.item;
+        chip.className = "log-chip extra-chip";
+        var mealTxt = x.meal==="—" ? "" : (x.meal + " · ");
+        chip.innerHTML = '<span><span class="tag">Extra</span><strong>'+escapeHtml(x.name)+'</strong> <span class="meta">'+mealTxt+(x.time||"")+'</span></span>';
+        var delX = document.createElement("button");
+        delX.textContent = "✕";
+        delX.addEventListener("click", function(){
+          var newState = cloneState();
+          var d = newState.profiles[newState.activeProfile];
+          d.extras = d.extras.filter(function(e){ return e.id !== x.id; });
+          persist(newState, "Extra eliminado");
+        });
+        chip.appendChild(delX);
+      } else {
+        var l = entry.item;
+        chip.className = "log-chip";
+        var mealTxt2 = l.meal==="—" ? "" : (l.meal + " · ");
+        chip.innerHTML = '<span><strong>'+CATEGORIES[l.category].label+'</strong> <span class="meta">'+fmtNum(l.portions)+' porc. · '+mealTxt2+(l.time||"")+'</span></span>';
+        var del = document.createElement("button");
+        del.textContent = "✕";
+        del.addEventListener("click", function(){
+          var newState = cloneState();
+          var d = newState.profiles[newState.activeProfile];
+          d.logs = d.logs.filter(function(y){ return y.id !== l.id; });
+          persist(newState, "Registro eliminado");
+        });
+        chip.appendChild(del);
+      }
+      host.appendChild(chip);
+    });
+  }
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, function(c){
+      return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+    });
+  }
+
+  function renderTodayBars(){
+    var host = document.getElementById("today-bars");
+    var today = todayStr();
+    var totals = dayTotals(today);
+    host.innerHTML = "";
+    CAT_ORDER.forEach(function(cat){
+      var pct = catPctForDay(today, cat);
+      host.appendChild(barRow(CATEGORIES[cat].label, pct, fmtNum(totals[cat])+" / "+fmtNum(activeDailyTargets()[cat])));
+    });
+  }
+
+  function barRow(name, pct, rightText){
+    var wrap = document.createElement("div");
+    wrap.className = "bar-row";
+    var top = document.createElement("div");
+    top.className = "top";
+    top.innerHTML = '<span class="name">'+name+'</span><span class="pct">'+(rightText || (pct+"%"))+'</span>';
+    var track = document.createElement("div");
+    track.className = "bar-track";
+    var fill = document.createElement("div");
+    fill.className = "bar-fill";
+    fill.style.width = Math.max(0, Math.min(100,pct)) + "%";
+    if (pct >= 100) fill.style.background = "var(--good)";
+    else if (pct >= 50) fill.style.background = "var(--accent)";
+    else if (pct > 0) fill.style.background = "var(--warn)";
+    else fill.style.background = "var(--border)";
+    track.appendChild(fill);
+    wrap.appendChild(top); wrap.appendChild(track);
+    return wrap;
+  }
+
+  function levelClass(pct){
+    if (pct<=0) return 0;
+    if (pct<40) return 1;
+    if (pct<70) return 2;
+    if (pct<100) return 3;
+    return 4;
+  }
+
+  function renderWeek(){
+    var anchor = new Date();
+    var days = weekDates(anchor);
+    var dateStrs = days.map(localDateStr);
+
+    var pctSum=0, pctCount=0;
+    dateStrs.forEach(function(ds){ pctSum += dayPct(ds); pctCount++; });
+    var weekPct = pctCount>0 ? Math.round(pctSum/pctCount) : 0;
+    document.getElementById("week-pct").textContent = weekPct + "%";
+    var rangeTxt = new Intl.DateTimeFormat("es-CL",{day:"numeric",month:"short"}).format(days[0]) + " – " +
+                   new Intl.DateTimeFormat("es-CL",{day:"numeric",month:"short"}).format(days[6]);
+    document.getElementById("week-range").textContent = rangeTxt;
+
+    var table = document.getElementById("heatmap");
+    var html = "<tr><th class='catcol'></th>";
+    days.forEach(function(d,i){ html += "<th>"+DOW_LABELS[i]+"</th>"; });
+    html += "</tr>";
+    CAT_ORDER.forEach(function(cat){
+      html += "<tr><td class='rowlabel'>"+CATEGORIES[cat].label+"</td>";
+      dateStrs.forEach(function(ds){
+        var pct = catPctForDay(ds, cat);
+        var lvl = levelClass(pct);
+        var txt = pct>0 ? pct : "·";
+        html += "<td class='cell' style='background:var(--ramp-"+lvl+");color:"+(lvl>=3?"var(--accent-ink)":"var(--ink-2)")+";'>"+txt+"</td>";
+      });
+      html += "</tr>";
+    });
+    table.innerHTML = html;
+
+    var wbars = document.getElementById("week-bars");
+    wbars.innerHTML = "";
+    CAT_ORDER.forEach(function(cat){
+      var sum=0;
+      dateStrs.forEach(function(ds){ sum += catPctForDay(ds, cat); });
+      var avg = Math.round(sum/7);
+      wbars.appendChild(barRow(CATEGORIES[cat].label, avg));
+    });
+
+    var weekExtras = currentData().extras.filter(function(x){ return dateStrs.indexOf(x.date) !== -1; })
+      .sort(function(a,b){ return (a.ts||"").localeCompare(b.ts||""); });
+    var wex = document.getElementById("week-extras");
+    wex.innerHTML = "";
+    if (weekExtras.length === 0){
+      wex.innerHTML = '<div class="empty-hint">Nada fuera de la pauta registrado esta semana.</div>';
+    } else {
+      weekExtras.forEach(function(x){
+        var chip = document.createElement("div");
+        chip.className = "log-chip extra-chip";
+        var dLabel = new Intl.DateTimeFormat("es-CL", {weekday:"short", day:"numeric"}).format(new Date(x.date + "T00:00:00"));
+        var mealTxt = x.meal==="—" ? "" : (x.meal + " · ");
+        chip.innerHTML = '<span><strong>'+escapeHtml(x.name)+'</strong> <span class="meta">'+mealTxt+capitalize(dLabel)+'</span></span>';
+        wex.appendChild(chip);
+      });
+    }
+  }
+
+  function renderRegistrar(){
+    renderMealRow();
+    renderCatRows();
+    renderAceites();
+    renderToggles();
+    renderTodayList();
+    renderTodayBars();
+  }
+
+  function renderAll(){
+    renderHeader();
+    renderProfileRow();
+    renderTabs();
+    renderRegistrar();
+    renderWeek();
+  }
+
+  /* ---------- Mutations ---------- */
+  function cloneState(){ return JSON.parse(JSON.stringify(STATE)); }
+  function uid(){ return "l" + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+
+  function addLog(meal, category, portions){
+    var newState = cloneState();
+    newState.profiles[newState.activeProfile].logs.push({
+      id: uid(), date: todayStr(), meal: meal, category: category, portions: portions,
+      time: new Date().toLocaleTimeString("es-CL", {hour:"2-digit", minute:"2-digit"}),
+      ts: new Date().toISOString()
+    });
+    persist(newState, "¡Guardado!");
+  }
+
+  document.getElementById("save-meal-btn").addEventListener("click", function(){
+    var newState = cloneState();
+    var any = false;
+    var savedMeal = activeMeal;
+    Object.keys(draft).forEach(function(cat){
+      if (draft[cat] > 0){
+        any = true;
+        newState.profiles[newState.activeProfile].logs.push({
+          id: uid(), date: todayStr(), meal: activeMeal, category: cat, portions: draft[cat],
+          time: new Date().toLocaleTimeString("es-CL", {hour:"2-digit", minute:"2-digit"}),
+          ts: new Date().toISOString()
+        });
+      }
+    });
+    if (!any) return;
+    draft = {};
+    persist(newState, "¡" + savedMeal + " guardado!");
+    var nm = nextMealOf(savedMeal);
+    if (nm){ activeMeal = nm; renderRegistrar(); }
+  });
+
+  document.getElementById("skip-meal-btn").addEventListener("click", function(){
+    var nm = nextMealOf(activeMeal);
+    if (!nm){ showToast("Ya es la última comida del día"); return; }
+    activeMeal = nm;
+    draft = {};
+    renderRegistrar();
+  });
+
+  function addExtra(){
+    var input = document.getElementById("extra-input");
+    var name = (input.value || "").trim();
+    if (!name) { input.focus(); return; }
+    var newState = cloneState();
+    newState.profiles[newState.activeProfile].extras.push({
+      id: uid(), date: todayStr(), meal: activeMeal, name: name,
+      time: new Date().toLocaleTimeString("es-CL", {hour:"2-digit", minute:"2-digit"}),
+      ts: new Date().toISOString()
+    });
+    input.value = "";
+    persist(newState, "Agregado: " + name);
+  }
+  document.getElementById("extra-add-btn").addEventListener("click", addExtra);
+  document.getElementById("extra-input").addEventListener("keydown", function(e){
+    if (e.key === "Enter"){ e.preventDefault(); addExtra(); }
+  });
+
+  document.getElementById("tab-btn-registrar").addEventListener("click", function(){ activeTab="registrar"; renderTabs(); });
+  document.getElementById("tab-btn-semana").addEventListener("click", function(){ activeTab="semana"; renderWeek(); renderTabs(); });
+
+  /* ---------- Toast ---------- */
+  var toastTimer;
+  function showToast(msg){
+    var t = document.getElementById("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ t.classList.remove("show"); }, 1700);
+  }
+
+  /* ---------- Persistence (localStorage, this browser only) ---------- */
+  function persist(newState, toastMsg){
+    STATE = newState;
+    var ok = saveState(STATE);
+    renderAll();
+    if (toastMsg) showToast(toastMsg);
+    if (!ok) showToast("No se pudo guardar en este navegador (¿modo privado?)");
+  }
+
+  /* ---------- Backup: export / import ---------- */
+  function exportBackup(){
+    var blob = new Blob([JSON.stringify(STATE, null, 2)], {type:"application/json"});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "pauta-al-dia-" + todayStr() + ".json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+    showToast("Copia descargada");
+  }
+  function importBackup(file){
+    var reader = new FileReader();
+    reader.onload = function(){
+      var parsed;
+      try { parsed = JSON.parse(reader.result); } catch(e){ showToast("Archivo inválido"); return; }
+      if (!parsed || typeof parsed !== "object"){ showToast("Archivo inválido"); return; }
+      // Accept both the current shape ({activeProfile, profiles:{Coni,Lorenzo}}) and
+      // older backups exported before per-persona profiles existed (flat logs/checks/extras).
+      if (!parsed.profiles || typeof parsed.profiles !== "object"){
+        if (!Array.isArray(parsed.logs)){ showToast("Archivo inválido"); return; }
+        parsed = {activeProfile: "Coni", profiles: {Coni: normalizeProfileData({logs: parsed.logs, checks: parsed.checks, extras: parsed.extras}), Lorenzo: blankProfileData()}};
+      }
+      PROFILES.forEach(function(p){ parsed.profiles[p] = normalizeProfileData(parsed.profiles[p]); });
+      if (PROFILES.indexOf(parsed.activeProfile) === -1) parsed.activeProfile = PROFILES[0];
+      var msg = "Esto reemplaza todos los registros actuales (de Coni y de Lorenzo) por los del archivo importado. ¿Continuar?";
+      if (!window.confirm(msg)) return;
+      persist(parsed, "Copia importada");
+    };
+    reader.onerror = function(){ showToast("No se pudo leer el archivo"); };
+    reader.readAsText(file);
+  }
+  document.getElementById("export-btn").addEventListener("click", exportBackup);
+  document.getElementById("import-btn").addEventListener("click", function(){ document.getElementById("import-file").click(); });
+  document.getElementById("import-file").addEventListener("change", function(e){
+    if (e.target.files && e.target.files[0]) importBackup(e.target.files[0]);
+    e.target.value = "";
+  });
+
+  /* ---------- Init ---------- */
+  renderAll();
+})();
+</script>
+</body>
+</html>
