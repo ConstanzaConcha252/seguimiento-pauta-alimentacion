@@ -176,9 +176,11 @@
     padding:10px 0; border-bottom:1px solid var(--border);
   }
   .cat-row:last-child{border-bottom:0;}
+  .cat-row.done{background:var(--good-soft);}
   .cat-name{font-weight:600; font-size:14.5px;}
   .cat-target{font-size:11.5px; color:var(--ink-mute); margin-top:1px;}
   .carry-note{color:var(--warn); font-weight:600;}
+  .done-check{color:var(--good); font-size:11.5px; font-weight:700; margin-left:6px;}
   .stepper{display:flex; align-items:center; gap:10px;}
   .stepper button{
     width:32px; height:32px; border-radius:9px; border:1px solid var(--border);
@@ -441,10 +443,13 @@
 
   <div class="card sheets-card">
     <div class="section-label" style="margin-bottom:8px;">Respaldo en vivo (Google Sheets)</div>
-    <div class="backup-note">Cada vez que registras algo, se guarda además en un Google Sheet — así queda un respaldo fuera del teléfono, para ti y para Lorenzo.</div>
+    <div class="backup-note">Cada vez que registras algo, se guarda además en un Google Sheet — así queda un respaldo fuera del teléfono, para ti y para Lorenzo. Al conectar por primera vez se sube también todo lo que ya tenías guardado en el teléfono. Si en algún momento notas que falta algo, usa "Sincronizar todo".</div>
     <div class="sheets-row">
       <span class="sheets-status"><span class="sheets-dot" id="sheets-dot" data-state="off"></span><span id="sheets-status-text">No conectado</span></span>
       <button class="btn-secondary" id="sheets-connect-btn" style="flex:none; padding:10px 16px;">Conectar con Google</button>
+    </div>
+    <div class="sheets-row" style="margin-top:8px;">
+      <button class="btn-secondary" id="sheets-sync-all-btn" style="flex:1; padding:10px 16px;">Sincronizar todo ahora</button>
     </div>
   </div>
 
@@ -653,6 +658,17 @@
     return carry;
   }
 
+  // Cuánto ya se guardó de una categoría dentro de una comida específica de HOY
+  // (para poder mostrar "✓ listo" aunque el stepper siga en 0 para seguir agregando).
+  function mealLoggedForCat(mealKey, cat){
+    var today = todayStr();
+    var sum = 0;
+    currentData().logs.forEach(function(l){
+      if (l.date===today && l.meal===mealKey && l.category===cat) sum += l.portions;
+    });
+    return sum;
+  }
+
   /* ---------- Rendering ---------- */
   function renderHeader(){
     var d = new Date();
@@ -704,12 +720,13 @@
     });
   }
 
-  function stepperRow(catKey, target, value, onChange, carryPortions){
+  function stepperRow(catKey, target, value, onChange, carryPortions, done){
     var wrap = document.createElement("div");
-    wrap.className = "cat-row";
+    wrap.className = "cat-row" + (done ? " done" : "");
     var left = document.createElement("div");
     var carryNote = carryPortions ? ' <span class="carry-note">· incluye '+fmtNum(carryPortions)+' pendiente'+(carryPortions===1?"":"s")+' de antes</span>' : '';
-    left.innerHTML = '<div class="cat-name">'+CATEGORIES[catKey].label+'</div><div class="cat-target">meta '+fmtNum(target)+' porc.'+(CATEGORIES[catKey].hint?" · "+CATEGORIES[catKey].hint:"")+carryNote+'</div>';
+    var doneMark = done ? ' <span class="done-check">✓ listo</span>' : '';
+    left.innerHTML = '<div class="cat-name">'+CATEGORIES[catKey].label+doneMark+'</div><div class="cat-target">meta '+fmtNum(target)+' porc.'+(CATEGORIES[catKey].hint?" · "+CATEGORIES[catKey].hint:"")+carryNote+'</div>';
     var stepper = document.createElement("div");
     stepper.className = "stepper";
     var minus = document.createElement("button"); minus.textContent = "–";
@@ -739,9 +756,11 @@
       var extra = carry[cat] || 0;
       var target = round1((meal.targets[cat] || 0) + extra);
       var value = draft[cat] || 0;
+      var logged = mealLoggedForCat(activeMeal, cat);
+      var done = target > 0 && round1(logged + value) >= target;
       var row = stepperRow(cat, target, value, function(nv){
         draft[cat] = nv; renderCatRows(); updateSaveBtn();
-      }, extra);
+      }, extra, done);
       host.appendChild(row);
     });
     updateSaveBtn();
@@ -1171,6 +1190,27 @@
   var googleTokenExpiresAt = 0;
   var sheetStructureReady = false;
   var GSHEETS_LS_KEY = "pautaAlDiaGoogleConnected.v1";
+  var GSHEETS_BACKFILL_KEY = "pautaAlDiaGoogleBackfilled.v1";
+
+  // Junta TODO lo que hay guardado localmente (ambos perfiles) en filas listas
+  // para el Sheet — se usa para el respaldo completo inicial y para el botón manual.
+  function collectAllRowsForSync(){
+    var registro = [], extras = [], chequeos = [];
+    PROFILES.forEach(function(p){
+      var d = STATE.profiles[p];
+      d.logs.forEach(function(l){
+        registro.push([p, l.date, l.meal, CATEGORIES[l.category] ? CATEGORIES[l.category].label : l.category, l.portions, l.time || ""]);
+      });
+      d.extras.forEach(function(x){
+        extras.push([p, x.date, x.meal, x.name, x.time || ""]);
+      });
+      Object.keys(d.checks).forEach(function(date){
+        var c = d.checks[date] || {};
+        chequeos.push([p, date, !!c.agua, !!c.creatina, ""]); // no se guardó la hora exacta del chequeo, se deja vacía
+      });
+    });
+    return {registro:registro, extras:extras, chequeos:chequeos};
+  }
 
   function setSheetsStatus(state, text){
     var dot = document.getElementById("sheets-dot");
@@ -1201,7 +1241,20 @@
           try { localStorage.setItem(GSHEETS_LS_KEY, "1"); } catch(e){}
           setSheetsStatus("syncing", "Conectando…");
           ensureSheetStructure().then(function(){
-            setSheetsStatus("on", "Conectado");
+            var alreadyBackfilled = false;
+            try { alreadyBackfilled = localStorage.getItem(GSHEETS_BACKFILL_KEY) === "1"; } catch(e){}
+            if (alreadyBackfilled){
+              setSheetsStatus("on", "Conectado");
+              return;
+            }
+            // Primera vez que se conecta: sube todo lo que ya había en el teléfono
+            // (si no, quedaría fuera del Sheet para siempre — solo se sincroniza
+            // lo nuevo de aquí en adelante).
+            setSheetsStatus("syncing", "Subiendo lo que ya tenías guardado…");
+            return syncAllLocalData(false).then(function(){
+              try { localStorage.setItem(GSHEETS_BACKFILL_KEY, "1"); } catch(e){}
+              setSheetsStatus("on", "Conectado");
+            });
           }).catch(function(){
             setSheetsStatus("error", "Conectado, pero hubo un error preparando el Sheet");
           });
@@ -1213,6 +1266,9 @@
     document.getElementById("sheets-connect-btn").addEventListener("click", function(){
       if (haveValidToken()) return;
       gsiTokenClient.requestAccessToken({ prompt: "consent" });
+    });
+    document.getElementById("sheets-sync-all-btn").addEventListener("click", function(){
+      syncAllLocalData(true);
     });
     var wasConnected = false;
     try { wasConnected = localStorage.getItem(GSHEETS_LS_KEY) === "1"; } catch(e){}
@@ -1267,6 +1323,44 @@
       });
     }).then(function(){
       sheetStructureReady = true;
+    });
+  }
+
+  // Sube TODO lo que hay guardado localmente al Sheet de una vez — se dispara sola
+  // la primera vez que te conectas (para no dejar fuera lo registrado antes de
+  // conectar), y también se puede disparar a mano con el botón "Sincronizar todo".
+  // Es seguro repetirla: si algo ya estaba en el Sheet puede quedar duplicado, pero
+  // el informe semanal ignora filas idénticas repetidas.
+  function syncAllLocalData(showFeedback){
+    if (!haveValidToken()){
+      if (showFeedback) showToast("Conecta con Google primero");
+      return Promise.resolve();
+    }
+    if (showFeedback) setSheetsStatus("syncing", "Sincronizando todo…");
+    var all = collectAllRowsForSync();
+    return ensureSheetStructure().then(function(){
+      var chain = Promise.resolve();
+      if (all.registro.length){
+        chain = chain.then(function(){
+          return sheetsApiFetch("/values/" + encodeURIComponent(SHEETS_TABS.registro.title + "!A1") + ":append?valueInputOption=USER_ENTERED", { method: "POST", body: { values: all.registro } });
+        });
+      }
+      if (all.extras.length){
+        chain = chain.then(function(){
+          return sheetsApiFetch("/values/" + encodeURIComponent(SHEETS_TABS.extras.title + "!A1") + ":append?valueInputOption=USER_ENTERED", { method: "POST", body: { values: all.extras } });
+        });
+      }
+      if (all.chequeos.length){
+        chain = chain.then(function(){
+          return sheetsApiFetch("/values/" + encodeURIComponent(SHEETS_TABS.chequeos.title + "!A1") + ":append?valueInputOption=USER_ENTERED", { method: "POST", body: { values: all.chequeos } });
+        });
+      }
+      return chain;
+    }).then(function(){
+      setSheetsStatus("on", "Conectado");
+      if (showFeedback) showToast("Todo sincronizado con el Sheet");
+    }).catch(function(){
+      setSheetsStatus("error", "No se pudo sincronizar todo — intenta de nuevo");
     });
   }
 

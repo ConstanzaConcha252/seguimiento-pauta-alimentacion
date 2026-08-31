@@ -31,7 +31,7 @@ GitHub Pages se actualiza solo con el contenido de la rama `main`, no hace falta
 
 ## Pruebas automatizadas
 
-`test_live.js` es un script de pruebas (Playwright) que verifica que la app funciona bien: los dos perfiles, el arrastre de porciones, las pestañas Semana y Mes con sus selectores, exportar/importar, etc. No hace falta correrlo a mano — está en el repo para que, la próxima vez que se le pida un cambio a Claude, pueda partir de él en vez de armar las pruebas de cero. Para correrlo manualmente (opcional, requiere Node.js y `npm i -g playwright`): `node test_live.js` en la misma carpeta que `seguimiento_nutricional.html`.
+`test_live.js` es un script de pruebas (Playwright) que verifica que la app funciona bien: los dos perfiles, el arrastre de porciones, las pestañas Semana y Mes con sus selectores, exportar/importar, etc. `test_sheets_sync.js` simula la API de Google (OAuth + Sheets, mockeadas) y verifica el respaldo en vivo: que al conectar por primera vez se sube todo lo que ya había en el teléfono (backfill), que lo nuevo se sincroniza normal después, y que el botón "Sincronizar todo ahora" funciona. No hace falta correrlos a mano — están en el repo para que, la próxima vez que se le pida un cambio a Claude, pueda partir de ellos en vez de armar las pruebas de cero. Para correrlos manualmente (opcional, requiere Node.js y `npm i -g playwright`): `node test_live.js` o `node test_sheets_sync.js` en la misma carpeta que `seguimiento_nutricional.html`.
 
 ## Nota
 
