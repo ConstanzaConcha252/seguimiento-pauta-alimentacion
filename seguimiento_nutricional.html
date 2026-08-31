@@ -177,10 +177,13 @@
   }
   .cat-row:last-child{border-bottom:0;}
   .cat-row.done{background:var(--good-soft);}
+  .cat-row.locked-partial{background:var(--surface-2);}
   .cat-name{font-weight:600; font-size:14.5px;}
   .cat-target{font-size:11.5px; color:var(--ink-mute); margin-top:1px;}
   .carry-note{color:var(--warn); font-weight:600;}
   .done-check{color:var(--good); font-size:11.5px; font-weight:700; margin-left:6px;}
+  .locked-check{color:var(--ink-mute); font-size:11.5px; font-weight:700; margin-left:6px; text-transform:uppercase; letter-spacing:.03em;}
+  .cat-locked-note{font-size:11px; color:var(--ink-mute); margin-top:3px;}
   .stepper{display:flex; align-items:center; gap:10px;}
   .stepper button{
     width:32px; height:32px; border-radius:9px; border:1px solid var(--border);
@@ -189,6 +192,8 @@
     font-family:"IBM Plex Sans"; font-weight:600;
   }
   .stepper button:active{background:var(--accent-soft); color:var(--accent);}
+  .stepper button:disabled{opacity:.35; cursor:default; background:var(--surface-2); color:var(--ink-mute);}
+  .stepper button:disabled:active{background:var(--surface-2); color:var(--ink-mute);}
   .stepper .val{min-width:30px; text-align:center; font-weight:700; font-size:15px;}
 
   .save-btn{
@@ -668,6 +673,20 @@
     });
     return sum;
   }
+  // Si ya existe un registro guardado de esta categoría en esta comida de HOY —
+  // aunque sea de 0 porciones. Un registro en 0 significa "ya revisé esto y no
+  // corresponde en esta comida", no "todavía no lo he mirado".
+  function mealHasEntry(mealKey, cat){
+    var today = todayStr();
+    return currentData().logs.some(function(l){ return l.date===today && l.meal===mealKey && l.category===cat; });
+  }
+  // Lista de categorías que corresponden a la comida activa: las propias de la
+  // comida más las que llegan arrastradas de comidas anteriores del día.
+  function activeMealCategoryList(){
+    var meal = activeMeals().filter(function(m){ return m.key===activeMeal; })[0];
+    var carry = mealCarryover(activeMeal);
+    return CAT_ORDER.filter(function(cat){ return (meal.targets[cat] || 0) > 0 || (carry[cat] || 0) > 0; });
+  }
 
   /* ---------- Rendering ---------- */
   function renderHeader(){
@@ -720,13 +739,26 @@
     });
   }
 
-  function stepperRow(catKey, target, value, onChange, carryPortions, done){
+  function stepperRow(catKey, target, value, onChange, carryPortions, state){
+    state = state || {};
+    var frozen = !!state.frozen;         // ya se guardó un registro de esta categoría en esta comida (aunque sea 0)
+    var reachedTarget = !!state.reachedTarget;
+    var capped = !frozen && reachedTarget; // tope alcanzado pero todavía sin guardar
+    var locked = frozen || capped;
     var wrap = document.createElement("div");
-    wrap.className = "cat-row" + (done ? " done" : "");
+    wrap.className = "cat-row" + (reachedTarget ? " done" : (frozen ? " locked-partial" : ""));
     var left = document.createElement("div");
     var carryNote = carryPortions ? ' <span class="carry-note">· incluye '+fmtNum(carryPortions)+' pendiente'+(carryPortions===1?"":"s")+' de antes</span>' : '';
-    var doneMark = done ? ' <span class="done-check">✓ listo</span>' : '';
-    left.innerHTML = '<div class="cat-name">'+CATEGORIES[catKey].label+doneMark+'</div><div class="cat-target">meta '+fmtNum(target)+' porc.'+(CATEGORIES[catKey].hint?" · "+CATEGORIES[catKey].hint:"")+carryNote+'</div>';
+    var mark = "";
+    if (reachedTarget) mark = ' <span class="done-check">✓ listo</span>';
+    else if (frozen) mark = ' <span class="locked-check">guardado</span>';
+    var note = "";
+    if (frozen){
+      note = reachedTarget ? 'Para cambiarlo, borra el registro en "Registrado hoy"' : 'Lo que falta pasa a la próxima comida — borra el registro para cambiarlo';
+    } else if (capped){
+      note = 'Baja con "–" si quieres agregar menos antes de guardar';
+    }
+    left.innerHTML = '<div class="cat-name">'+CATEGORIES[catKey].label+mark+'</div><div class="cat-target">meta '+fmtNum(target)+' porc.'+(CATEGORIES[catKey].hint?" · "+CATEGORIES[catKey].hint:"")+carryNote+'</div>'+(note ? '<div class="cat-locked-note">'+note+'</div>' : '');
     var stepper = document.createElement("div");
     stepper.className = "stepper";
     var minus = document.createElement("button"); minus.textContent = "–";
@@ -734,6 +766,13 @@
     var plus = document.createElement("button"); plus.textContent = "+";
     minus.addEventListener("click", function(){ onChange(Math.max(0, round1(value-0.5))); });
     plus.addEventListener("click", function(){ onChange(round1(value+0.5)); });
+    // Se bloquea el "+" al llegar a la meta (antes de guardar) y, en cuanto se
+    // guarda la comida, TODA categoría de esa comida queda congelada (incluidas
+    // las que quedaron en 0) — para volver a tocarla hay que borrar el registro
+    // guardado en "Registrado hoy". Mientras no se ha guardado, "–" sigue
+    // disponible para bajar antes de guardar.
+    if (locked){ plus.disabled = true; }
+    if (frozen){ minus.disabled = true; }
     stepper.appendChild(minus); stepper.appendChild(val); stepper.appendChild(plus);
     wrap.appendChild(left); wrap.appendChild(stepper);
     return wrap;
@@ -749,18 +788,20 @@
     host.innerHTML = "";
     var meal = activeMeals().filter(function(m){ return m.key===activeMeal; })[0];
     var carry = mealCarryover(activeMeal);
-    var cats = CAT_ORDER.filter(function(cat){
-      return (meal.targets[cat] || 0) > 0 || (carry[cat] || 0) > 0;
-    });
+    var cats = activeMealCategoryList();
     cats.forEach(function(cat){
       var extra = carry[cat] || 0;
       var target = round1((meal.targets[cat] || 0) + extra);
-      var value = draft[cat] || 0;
+      var frozen = mealHasEntry(activeMeal, cat);
       var logged = mealLoggedForCat(activeMeal, cat);
-      var done = target > 0 && round1(logged + value) >= target;
+      var draftVal = draft[cat] || 0;
+      // Una vez congelada (ya se guardó), se muestra la cantidad real guardada,
+      // no el borrador (que se vacía después de cada "Guardar comida").
+      var value = frozen ? logged : draftVal;
+      var reachedTarget = target > 0 && round1(logged + draftVal) >= target;
       var row = stepperRow(cat, target, value, function(nv){
         draft[cat] = nv; renderCatRows(); updateSaveBtn();
-      }, extra, done);
+      }, extra, {frozen: frozen, reachedTarget: reachedTarget});
       host.appendChild(row);
     });
     updateSaveBtn();
@@ -1064,20 +1105,30 @@
   }
 
   document.getElementById("save-meal-btn").addEventListener("click", function(){
-    var newState = cloneState();
-    var any = false;
     var savedMeal = activeMeal;
-    Object.keys(draft).forEach(function(cat){
-      if (draft[cat] > 0){
-        any = true;
-        newState.profiles[newState.activeProfile].logs.push({
-          id: uid(), date: todayStr(), meal: activeMeal, category: cat, portions: draft[cat],
-          time: new Date().toLocaleTimeString("es-CL", {hour:"2-digit", minute:"2-digit"}),
-          ts: new Date().toISOString()
-        });
-      }
-    });
+    // Solo se puede guardar si hay al menos una porción marcada de verdad — pero
+    // al guardar, se cierran TODAS las categorías de esta comida (incluidas las
+    // que quedan en 0), no solo las que se tocaron. Un 0 al guardar significa
+    // "esto no correspondía en esta comida", no "todavía sin revisar".
+    var cats = activeMealCategoryList();
+    var any = cats.some(function(cat){ return (draft[cat] || 0) > 0; });
     if (!any) return;
+    var newState = cloneState();
+    var today = todayStr();
+    var nowTime = new Date().toLocaleTimeString("es-CL", {hour:"2-digit", minute:"2-digit"});
+    var nowIso = new Date().toISOString();
+    cats.forEach(function(cat){
+      // Si esta categoría ya estaba congelada de un guardado anterior en esta
+      // misma comida, no se vuelve a crear un registro (evita duplicados).
+      var already = newState.profiles[newState.activeProfile].logs.some(function(l){
+        return l.date===today && l.meal===activeMeal && l.category===cat;
+      });
+      if (already) return;
+      newState.profiles[newState.activeProfile].logs.push({
+        id: uid(), date: today, meal: activeMeal, category: cat, portions: draft[cat] || 0,
+        time: nowTime, ts: nowIso
+      });
+    });
     draft = {};
     persist(newState, "¡" + savedMeal + " guardado!");
     var nm = nextMealOf(savedMeal);
