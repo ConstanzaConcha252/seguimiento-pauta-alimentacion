@@ -176,14 +176,9 @@
     padding:10px 0; border-bottom:1px solid var(--border);
   }
   .cat-row:last-child{border-bottom:0;}
-  .cat-row.done{background:var(--good-soft);}
-  .cat-row.locked-partial{background:var(--surface-2);}
   .cat-name{font-weight:600; font-size:14.5px;}
   .cat-target{font-size:11.5px; color:var(--ink-mute); margin-top:1px;}
   .carry-note{color:var(--warn); font-weight:600;}
-  .done-check{color:var(--good); font-size:11.5px; font-weight:700; margin-left:6px;}
-  .locked-check{color:var(--ink-mute); font-size:11.5px; font-weight:700; margin-left:6px; text-transform:uppercase; letter-spacing:.03em;}
-  .cat-locked-note{font-size:11px; color:var(--ink-mute); margin-top:3px;}
   .stepper{display:flex; align-items:center; gap:10px;}
   .stepper button{
     width:32px; height:32px; border-radius:9px; border:1px solid var(--border);
@@ -192,8 +187,6 @@
     font-family:"IBM Plex Sans"; font-weight:600;
   }
   .stepper button:active{background:var(--accent-soft); color:var(--accent);}
-  .stepper button:disabled{opacity:.35; cursor:default; background:var(--surface-2); color:var(--ink-mute);}
-  .stepper button:disabled:active{background:var(--surface-2); color:var(--ink-mute);}
   .stepper .val{min-width:30px; text-align:center; font-weight:700; font-size:15px;}
 
   .save-btn{
@@ -344,6 +337,7 @@
 
   <main>
     <section id="tab-registrar" class="active">
+      <div class="period-nav" id="day-nav"></div>
       <div class="meal-row" id="meal-row"></div>
 
       <div class="card">
@@ -359,7 +353,7 @@
       </div>
 
       <div class="card">
-        <div class="section-label" style="margin-bottom:10px;">Otros de hoy</div>
+        <div class="section-label" id="otros-label" style="margin-bottom:10px;">Otros de hoy</div>
         <div class="cat-row" id="aceites-row" style="border-bottom:1px solid var(--border); margin-bottom:10px; padding-top:0;"></div>
         <div class="toggle-row">
           <div class="toggle-chip" id="chip-agua" data-key="agua">💧 Agua 2,2 L</div>
@@ -368,12 +362,12 @@
       </div>
 
       <div>
-        <div class="section-label" style="margin-bottom:8px;">Registrado hoy</div>
+        <div class="section-label" id="registrado-label" style="margin-bottom:8px;">Registrado hoy</div>
         <div class="today-list" id="today-list"></div>
       </div>
 
       <div>
-        <div class="section-label" style="margin-bottom:4px;">Avance de hoy</div>
+        <div class="section-label" id="avance-label" style="margin-bottom:4px;">Avance de hoy</div>
         <div class="card" id="today-bars"></div>
       </div>
     </section>
@@ -448,13 +442,10 @@
 
   <div class="card sheets-card">
     <div class="section-label" style="margin-bottom:8px;">Respaldo en vivo (Google Sheets)</div>
-    <div class="backup-note">Cada vez que registras algo, se guarda además en un Google Sheet — así queda un respaldo fuera del teléfono, para ti y para Lorenzo. Al conectar por primera vez se sube también todo lo que ya tenías guardado en el teléfono. Si en algún momento notas que falta algo, usa "Sincronizar todo".</div>
+    <div class="backup-note">Cada vez que registras algo, se guarda además en un Google Sheet — así queda un respaldo fuera del teléfono, para ti y para Lorenzo.</div>
     <div class="sheets-row">
       <span class="sheets-status"><span class="sheets-dot" id="sheets-dot" data-state="off"></span><span id="sheets-status-text">No conectado</span></span>
       <button class="btn-secondary" id="sheets-connect-btn" style="flex:none; padding:10px 16px;">Conectar con Google</button>
-    </div>
-    <div class="sheets-row" style="margin-top:8px;">
-      <button class="btn-secondary" id="sheets-sync-all-btn" style="flex:1; padding:10px 16px;">Sincronizar todo ahora</button>
     </div>
   </div>
 
@@ -553,6 +544,7 @@
   var draft = {}; // ephemeral stepper values for the active meal, category -> portions
   var activeMeal = autoMeal();
   var activeTab = "registrar";
+  var dayOffset = 0;   // 0 = día actual (hoy); negativo = días anteriores (nunca > 0) — para Registrar
   var weekOffset = 0;  // 0 = semana actual; negativo = semanas anteriores (nunca > 0)
   var monthOffset = 0; // 0 = mes actual; negativo = meses anteriores (nunca > 0)
   var MONTH_LABELS = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
@@ -563,6 +555,15 @@
     return y+"-"+m+"-"+day;
   }
   function todayStr(){ return localDateStr(new Date()); }
+  // El día que se está editando en la pestaña Registrar (hoy por defecto, o uno
+  // anterior si se navegó con el selector de día — para registrar comidas olvidadas).
+  function selectedDateStr(){ return localDateStr(addDays(new Date(), dayOffset)); }
+  function fmtSelectedDateShort(){
+    return new Intl.DateTimeFormat("es-CL", {day:"numeric", month:"short"}).format(addDays(new Date(), dayOffset));
+  }
+  function withDaySuffix(msg){
+    return dayOffset === 0 ? msg : (msg + " (" + fmtSelectedDateShort() + ")");
+  }
   function autoMeal(profile){
     var prof = profile || STATE.activeProfile;
     var h = new Date().getHours();
@@ -640,7 +641,7 @@
     var order = activeMealOrder();
     var idx = order.indexOf(mealKey);
     if (idx <= 0) return {};
-    var today = todayStr();
+    var day = selectedDateStr();
     var carry = {}; // running carry-in, accumulated meal by meal up to (not including) mealKey
     var meals = activeMeals();
     for (var i=0;i<idx;i++){
@@ -653,7 +654,7 @@
         var target = round1((m.targets[cat] || 0) + (carry[cat] || 0));
         var logged = 0;
         currentData().logs.forEach(function(l){
-          if (l.date===today && l.meal===m.key && l.category===cat) logged += l.portions;
+          if (l.date===day && l.meal===m.key && l.category===cat) logged += l.portions;
         });
         var shortfall = round1(Math.max(0, target - logged));
         if (shortfall > 0) nextCarry[cat] = shortfall;
@@ -661,31 +662,6 @@
       carry = nextCarry;
     }
     return carry;
-  }
-
-  // Cuánto ya se guardó de una categoría dentro de una comida específica de HOY
-  // (para poder mostrar "✓ listo" aunque el stepper siga en 0 para seguir agregando).
-  function mealLoggedForCat(mealKey, cat){
-    var today = todayStr();
-    var sum = 0;
-    currentData().logs.forEach(function(l){
-      if (l.date===today && l.meal===mealKey && l.category===cat) sum += l.portions;
-    });
-    return sum;
-  }
-  // Si ya existe un registro guardado de esta categoría en esta comida de HOY —
-  // aunque sea de 0 porciones. Un registro en 0 significa "ya revisé esto y no
-  // corresponde en esta comida", no "todavía no lo he mirado".
-  function mealHasEntry(mealKey, cat){
-    var today = todayStr();
-    return currentData().logs.some(function(l){ return l.date===today && l.meal===mealKey && l.category===cat; });
-  }
-  // Lista de categorías que corresponden a la comida activa: las propias de la
-  // comida más las que llegan arrastradas de comidas anteriores del día.
-  function activeMealCategoryList(){
-    var meal = activeMeals().filter(function(m){ return m.key===activeMeal; })[0];
-    var carry = mealCarryover(activeMeal);
-    return CAT_ORDER.filter(function(cat){ return (meal.targets[cat] || 0) > 0 || (carry[cat] || 0) > 0; });
   }
 
   /* ---------- Rendering ---------- */
@@ -719,7 +695,7 @@
         var newState = cloneState();
         newState.activeProfile = p;
         draft = {};
-        activeMeal = autoMeal();
+        activeMeal = (dayOffset === 0) ? autoMeal(p) : PROFILE_CONFIG[p].meals[0].key;
         persist(newState, "Registrando para " + p);
       });
       host.appendChild(b);
@@ -739,26 +715,12 @@
     });
   }
 
-  function stepperRow(catKey, target, value, onChange, carryPortions, state){
-    state = state || {};
-    var frozen = !!state.frozen;         // ya se guardó un registro de esta categoría en esta comida (aunque sea 0)
-    var reachedTarget = !!state.reachedTarget;
-    var capped = !frozen && reachedTarget; // tope alcanzado pero todavía sin guardar
-    var locked = frozen || capped;
+  function stepperRow(catKey, target, value, onChange, carryPortions){
     var wrap = document.createElement("div");
-    wrap.className = "cat-row" + (reachedTarget ? " done" : (frozen ? " locked-partial" : ""));
+    wrap.className = "cat-row";
     var left = document.createElement("div");
     var carryNote = carryPortions ? ' <span class="carry-note">· incluye '+fmtNum(carryPortions)+' pendiente'+(carryPortions===1?"":"s")+' de antes</span>' : '';
-    var mark = "";
-    if (reachedTarget) mark = ' <span class="done-check">✓ listo</span>';
-    else if (frozen) mark = ' <span class="locked-check">guardado</span>';
-    var note = "";
-    if (frozen){
-      note = reachedTarget ? 'Para cambiarlo, borra el registro en "Registrado hoy"' : 'Lo que falta pasa a la próxima comida — borra el registro para cambiarlo';
-    } else if (capped){
-      note = 'Baja con "–" si quieres agregar menos antes de guardar';
-    }
-    left.innerHTML = '<div class="cat-name">'+CATEGORIES[catKey].label+mark+'</div><div class="cat-target">meta '+fmtNum(target)+' porc.'+(CATEGORIES[catKey].hint?" · "+CATEGORIES[catKey].hint:"")+carryNote+'</div>'+(note ? '<div class="cat-locked-note">'+note+'</div>' : '');
+    left.innerHTML = '<div class="cat-name">'+CATEGORIES[catKey].label+'</div><div class="cat-target">meta '+fmtNum(target)+' porc.'+(CATEGORIES[catKey].hint?" · "+CATEGORIES[catKey].hint:"")+carryNote+'</div>';
     var stepper = document.createElement("div");
     stepper.className = "stepper";
     var minus = document.createElement("button"); minus.textContent = "–";
@@ -766,13 +728,6 @@
     var plus = document.createElement("button"); plus.textContent = "+";
     minus.addEventListener("click", function(){ onChange(Math.max(0, round1(value-0.5))); });
     plus.addEventListener("click", function(){ onChange(round1(value+0.5)); });
-    // Se bloquea el "+" al llegar a la meta (antes de guardar) y, en cuanto se
-    // guarda la comida, TODA categoría de esa comida queda congelada (incluidas
-    // las que quedaron en 0) — para volver a tocarla hay que borrar el registro
-    // guardado en "Registrado hoy". Mientras no se ha guardado, "–" sigue
-    // disponible para bajar antes de guardar.
-    if (locked){ plus.disabled = true; }
-    if (frozen){ minus.disabled = true; }
     stepper.appendChild(minus); stepper.appendChild(val); stepper.appendChild(plus);
     wrap.appendChild(left); wrap.appendChild(stepper);
     return wrap;
@@ -788,20 +743,16 @@
     host.innerHTML = "";
     var meal = activeMeals().filter(function(m){ return m.key===activeMeal; })[0];
     var carry = mealCarryover(activeMeal);
-    var cats = activeMealCategoryList();
+    var cats = CAT_ORDER.filter(function(cat){
+      return (meal.targets[cat] || 0) > 0 || (carry[cat] || 0) > 0;
+    });
     cats.forEach(function(cat){
       var extra = carry[cat] || 0;
       var target = round1((meal.targets[cat] || 0) + extra);
-      var frozen = mealHasEntry(activeMeal, cat);
-      var logged = mealLoggedForCat(activeMeal, cat);
-      var draftVal = draft[cat] || 0;
-      // Una vez congelada (ya se guardó), se muestra la cantidad real guardada,
-      // no el borrador (que se vacía después de cada "Guardar comida").
-      var value = frozen ? logged : draftVal;
-      var reachedTarget = target > 0 && round1(logged + draftVal) >= target;
+      var value = draft[cat] || 0;
       var row = stepperRow(cat, target, value, function(nv){
         draft[cat] = nv; renderCatRows(); updateSaveBtn();
-      }, extra, {frozen: frozen, reachedTarget: reachedTarget});
+      }, extra);
       host.appendChild(row);
     });
     updateSaveBtn();
@@ -816,8 +767,8 @@
   function renderAceites(){
     var host = document.getElementById("aceites-row");
     host.innerHTML = "";
-    var today = todayStr();
-    var value = dayTotals(today).ACEITES;
+    var day = selectedDateStr();
+    var value = dayTotals(day).ACEITES;
     var row = stepperRow("ACEITES", activeDailyTargets().ACEITES, value, function(nv){
       var delta = round1(nv - value);
       if (delta === 0) return;
@@ -827,30 +778,30 @@
   }
 
   function renderToggles(){
-    var today = todayStr();
-    var checks = currentData().checks[today] || {};
+    var day = selectedDateStr();
+    var checks = currentData().checks[day] || {};
     ["agua","creatina"].forEach(function(key){
       var chip = document.getElementById("chip-"+key);
       chip.setAttribute("data-on", !!checks[key]);
       chip.onclick = function(){
         var newState = cloneState();
         var d = newState.profiles[newState.activeProfile];
-        if (!d.checks[today]) d.checks[today] = {};
-        d.checks[today][key] = !checks[key];
-        persist(newState, checks[key] ? "Desmarcado" : "¡Anotado!");
+        if (!d.checks[day]) d.checks[day] = {};
+        d.checks[day][key] = !checks[key];
+        persist(newState, withDaySuffix(checks[key] ? "Desmarcado" : "¡Anotado!"));
       };
     });
   }
 
   function renderTodayList(){
     var host = document.getElementById("today-list");
-    var today = todayStr();
-    var todayLogs = currentData().logs.filter(function(l){ return l.date===today; }).map(function(l){ return {kind:"log", item:l}; });
-    var todayExtras = currentData().extras.filter(function(x){ return x.date===today; }).map(function(x){ return {kind:"extra", item:x}; });
+    var day = selectedDateStr();
+    var todayLogs = currentData().logs.filter(function(l){ return l.date===day; }).map(function(l){ return {kind:"log", item:l}; });
+    var todayExtras = currentData().extras.filter(function(x){ return x.date===day; }).map(function(x){ return {kind:"extra", item:x}; });
     var todays = todayLogs.concat(todayExtras).sort(function(a,b){ return (a.item.ts||"").localeCompare(b.item.ts||""); });
     host.innerHTML = "";
     if (todays.length===0){
-      host.innerHTML = '<div class="empty-hint">Aún no registras nada hoy. Elige una comida arriba y guarda tus porciones.</div>';
+      host.innerHTML = '<div class="empty-hint">'+(dayOffset===0 ? "Aún no registras nada hoy." : "Nada registrado ese día todavía.")+' Elige una comida arriba y guarda tus porciones.</div>';
       return;
     }
     todays.forEach(function(entry){
@@ -895,11 +846,11 @@
 
   function renderTodayBars(){
     var host = document.getElementById("today-bars");
-    var today = todayStr();
-    var totals = dayTotals(today);
+    var day = selectedDateStr();
+    var totals = dayTotals(day);
     host.innerHTML = "";
     CAT_ORDER.forEach(function(cat){
-      var pct = catPctForDay(today, cat);
+      var pct = catPctForDay(day, cat);
       host.appendChild(barRow(CATEGORIES[cat].label, pct, fmtNum(totals[cat])+" / "+fmtNum(activeDailyTargets()[cat])));
     });
   }
@@ -1072,7 +1023,34 @@
     }
   }
 
+  function renderDayNav(){
+    var d = addDays(new Date(), dayOffset);
+    var label = dayOffset === 0 ? "Hoy" : capitalize(new Intl.DateTimeFormat("es-CL", {weekday:"long", day:"numeric", month:"long"}).format(d));
+    renderPeriodNav("day-nav", label, dayOffset < 0,
+      function(){
+        dayOffset -= 1; draft = {};
+        activeMeal = activeMeals()[0].key;
+        renderRegistrar();
+      },
+      function(){
+        if (dayOffset < 0){
+          dayOffset += 1; draft = {};
+          activeMeal = (dayOffset === 0) ? autoMeal() : activeMeals()[0].key;
+          renderRegistrar();
+        }
+      });
+  }
+
+  function renderDayLabels(){
+    var shortD = fmtSelectedDateShort();
+    document.getElementById("otros-label").textContent = dayOffset===0 ? "Otros de hoy" : ("Otros del " + shortD);
+    document.getElementById("registrado-label").textContent = dayOffset===0 ? "Registrado hoy" : ("Registrado el " + shortD);
+    document.getElementById("avance-label").textContent = dayOffset===0 ? "Avance de hoy" : ("Avance del " + shortD);
+  }
+
   function renderRegistrar(){
+    renderDayNav();
+    renderDayLabels();
     renderMealRow();
     renderCatRows();
     renderAceites();
@@ -1097,40 +1075,30 @@
   function addLog(meal, category, portions){
     var newState = cloneState();
     newState.profiles[newState.activeProfile].logs.push({
-      id: uid(), date: todayStr(), meal: meal, category: category, portions: portions,
+      id: uid(), date: selectedDateStr(), meal: meal, category: category, portions: portions,
       time: new Date().toLocaleTimeString("es-CL", {hour:"2-digit", minute:"2-digit"}),
       ts: new Date().toISOString()
     });
-    persist(newState, "¡Guardado!");
+    persist(newState, withDaySuffix("¡Guardado!"));
   }
 
   document.getElementById("save-meal-btn").addEventListener("click", function(){
-    var savedMeal = activeMeal;
-    // Solo se puede guardar si hay al menos una porción marcada de verdad — pero
-    // al guardar, se cierran TODAS las categorías de esta comida (incluidas las
-    // que quedan en 0), no solo las que se tocaron. Un 0 al guardar significa
-    // "esto no correspondía en esta comida", no "todavía sin revisar".
-    var cats = activeMealCategoryList();
-    var any = cats.some(function(cat){ return (draft[cat] || 0) > 0; });
-    if (!any) return;
     var newState = cloneState();
-    var today = todayStr();
-    var nowTime = new Date().toLocaleTimeString("es-CL", {hour:"2-digit", minute:"2-digit"});
-    var nowIso = new Date().toISOString();
-    cats.forEach(function(cat){
-      // Si esta categoría ya estaba congelada de un guardado anterior en esta
-      // misma comida, no se vuelve a crear un registro (evita duplicados).
-      var already = newState.profiles[newState.activeProfile].logs.some(function(l){
-        return l.date===today && l.meal===activeMeal && l.category===cat;
-      });
-      if (already) return;
-      newState.profiles[newState.activeProfile].logs.push({
-        id: uid(), date: today, meal: activeMeal, category: cat, portions: draft[cat] || 0,
-        time: nowTime, ts: nowIso
-      });
+    var any = false;
+    var savedMeal = activeMeal;
+    Object.keys(draft).forEach(function(cat){
+      if (draft[cat] > 0){
+        any = true;
+        newState.profiles[newState.activeProfile].logs.push({
+          id: uid(), date: selectedDateStr(), meal: activeMeal, category: cat, portions: draft[cat],
+          time: new Date().toLocaleTimeString("es-CL", {hour:"2-digit", minute:"2-digit"}),
+          ts: new Date().toISOString()
+        });
+      }
     });
+    if (!any) return;
     draft = {};
-    persist(newState, "¡" + savedMeal + " guardado!");
+    persist(newState, withDaySuffix("¡" + savedMeal + " guardado!"));
     var nm = nextMealOf(savedMeal);
     if (nm){ activeMeal = nm; renderRegistrar(); }
   });
@@ -1149,12 +1117,12 @@
     if (!name) { input.focus(); return; }
     var newState = cloneState();
     newState.profiles[newState.activeProfile].extras.push({
-      id: uid(), date: todayStr(), meal: activeMeal, name: name,
+      id: uid(), date: selectedDateStr(), meal: activeMeal, name: name,
       time: new Date().toLocaleTimeString("es-CL", {hour:"2-digit", minute:"2-digit"}),
       ts: new Date().toISOString()
     });
     input.value = "";
-    persist(newState, "Agregado: " + name);
+    persist(newState, withDaySuffix("Agregado: " + name));
   }
   document.getElementById("extra-add-btn").addEventListener("click", addExtra);
   document.getElementById("extra-input").addEventListener("keydown", function(e){
@@ -1241,27 +1209,6 @@
   var googleTokenExpiresAt = 0;
   var sheetStructureReady = false;
   var GSHEETS_LS_KEY = "pautaAlDiaGoogleConnected.v1";
-  var GSHEETS_BACKFILL_KEY = "pautaAlDiaGoogleBackfilled.v1";
-
-  // Junta TODO lo que hay guardado localmente (ambos perfiles) en filas listas
-  // para el Sheet — se usa para el respaldo completo inicial y para el botón manual.
-  function collectAllRowsForSync(){
-    var registro = [], extras = [], chequeos = [];
-    PROFILES.forEach(function(p){
-      var d = STATE.profiles[p];
-      d.logs.forEach(function(l){
-        registro.push([p, l.date, l.meal, CATEGORIES[l.category] ? CATEGORIES[l.category].label : l.category, l.portions, l.time || ""]);
-      });
-      d.extras.forEach(function(x){
-        extras.push([p, x.date, x.meal, x.name, x.time || ""]);
-      });
-      Object.keys(d.checks).forEach(function(date){
-        var c = d.checks[date] || {};
-        chequeos.push([p, date, !!c.agua, !!c.creatina, ""]); // no se guardó la hora exacta del chequeo, se deja vacía
-      });
-    });
-    return {registro:registro, extras:extras, chequeos:chequeos};
-  }
 
   function setSheetsStatus(state, text){
     var dot = document.getElementById("sheets-dot");
@@ -1292,20 +1239,7 @@
           try { localStorage.setItem(GSHEETS_LS_KEY, "1"); } catch(e){}
           setSheetsStatus("syncing", "Conectando…");
           ensureSheetStructure().then(function(){
-            var alreadyBackfilled = false;
-            try { alreadyBackfilled = localStorage.getItem(GSHEETS_BACKFILL_KEY) === "1"; } catch(e){}
-            if (alreadyBackfilled){
-              setSheetsStatus("on", "Conectado");
-              return;
-            }
-            // Primera vez que se conecta: sube todo lo que ya había en el teléfono
-            // (si no, quedaría fuera del Sheet para siempre — solo se sincroniza
-            // lo nuevo de aquí en adelante).
-            setSheetsStatus("syncing", "Subiendo lo que ya tenías guardado…");
-            return syncAllLocalData(false).then(function(){
-              try { localStorage.setItem(GSHEETS_BACKFILL_KEY, "1"); } catch(e){}
-              setSheetsStatus("on", "Conectado");
-            });
+            setSheetsStatus("on", "Conectado");
           }).catch(function(){
             setSheetsStatus("error", "Conectado, pero hubo un error preparando el Sheet");
           });
@@ -1317,9 +1251,6 @@
     document.getElementById("sheets-connect-btn").addEventListener("click", function(){
       if (haveValidToken()) return;
       gsiTokenClient.requestAccessToken({ prompt: "consent" });
-    });
-    document.getElementById("sheets-sync-all-btn").addEventListener("click", function(){
-      syncAllLocalData(true);
     });
     var wasConnected = false;
     try { wasConnected = localStorage.getItem(GSHEETS_LS_KEY) === "1"; } catch(e){}
@@ -1374,44 +1305,6 @@
       });
     }).then(function(){
       sheetStructureReady = true;
-    });
-  }
-
-  // Sube TODO lo que hay guardado localmente al Sheet de una vez — se dispara sola
-  // la primera vez que te conectas (para no dejar fuera lo registrado antes de
-  // conectar), y también se puede disparar a mano con el botón "Sincronizar todo".
-  // Es seguro repetirla: si algo ya estaba en el Sheet puede quedar duplicado, pero
-  // el informe semanal ignora filas idénticas repetidas.
-  function syncAllLocalData(showFeedback){
-    if (!haveValidToken()){
-      if (showFeedback) showToast("Conecta con Google primero");
-      return Promise.resolve();
-    }
-    if (showFeedback) setSheetsStatus("syncing", "Sincronizando todo…");
-    var all = collectAllRowsForSync();
-    return ensureSheetStructure().then(function(){
-      var chain = Promise.resolve();
-      if (all.registro.length){
-        chain = chain.then(function(){
-          return sheetsApiFetch("/values/" + encodeURIComponent(SHEETS_TABS.registro.title + "!A1") + ":append?valueInputOption=USER_ENTERED", { method: "POST", body: { values: all.registro } });
-        });
-      }
-      if (all.extras.length){
-        chain = chain.then(function(){
-          return sheetsApiFetch("/values/" + encodeURIComponent(SHEETS_TABS.extras.title + "!A1") + ":append?valueInputOption=USER_ENTERED", { method: "POST", body: { values: all.extras } });
-        });
-      }
-      if (all.chequeos.length){
-        chain = chain.then(function(){
-          return sheetsApiFetch("/values/" + encodeURIComponent(SHEETS_TABS.chequeos.title + "!A1") + ":append?valueInputOption=USER_ENTERED", { method: "POST", body: { values: all.chequeos } });
-        });
-      }
-      return chain;
-    }).then(function(){
-      setSheetsStatus("on", "Conectado");
-      if (showFeedback) showToast("Todo sincronizado con el Sheet");
-    }).catch(function(){
-      setSheetsStatus("error", "No se pudo sincronizar todo — intenta de nuevo");
     });
   }
 

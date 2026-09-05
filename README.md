@@ -8,7 +8,8 @@ Web app personal para registrar el cumplimiento de la pauta nutricional día a d
 
 - Registro rápido por categoría de alimento (Cereales, Proteína, Fruta, Verduras, Lácteos, Aceites, Frutos secos) en porciones, comida por comida — sin necesidad de detallar cada plato.
 - Dos perfiles, **Coni** y **Lorenzo**, cada uno con su propia pauta: comidas, metas por categoría y avance completamente separados entre los dos.
-- Auto-selección de la comida según la hora del día, con opción de saltar una comida sin registrar nada.
+- Registro de días anteriores: en la pestaña Registrar hay un selector (‹ ›) para moverse a un día pasado y cargar ahí lo que se te haya olvidado — no afecta el indicador de "hoy" del encabezado, que siempre refleja el día real.
+- Auto-selección de la comida según la hora del día (solo cuando el día seleccionado es hoy), con opción de saltar una comida sin registrar nada.
 - Arrastre de porciones pendientes: lo que no se completa en una comida se suma como meta extra a la siguiente, para no perderlo de vista.
 - Registro de alimentos "fuera de la pauta" (no cuentan para el cumplimiento, solo quedan anotados).
 - Chequeo diario de agua y creatina.
@@ -31,7 +32,7 @@ GitHub Pages se actualiza solo con el contenido de la rama `main`, no hace falta
 
 ## Pruebas automatizadas
 
-`test_live.js` es un script de pruebas (Playwright) que verifica que la app funciona bien: los dos perfiles, el arrastre de porciones, las pestañas Semana y Mes con sus selectores, exportar/importar, etc. `test_sheets_sync.js` simula la API de Google (OAuth + Sheets, mockeadas) y verifica el respaldo en vivo: que al conectar por primera vez se sube todo lo que ya había en el teléfono (backfill), que lo nuevo se sincroniza normal después, y que el botón "Sincronizar todo ahora" funciona. `test_meal_lock.js` verifica que el "+" de una categoría se bloquea al llegar a la meta de esa comida y solo se destraba bajando con "–" o borrando un registro ya guardado. `test_partial_save_lock.js` verifica el caso de guardar MENOS que la meta: igual queda bloqueado (con una nota de "guardado" en vez de "✓ listo"), porque lo que falta pasa como arrastre a la siguiente comida. `test_meal_freeze_whole.js` verifica que al guardar una comida se cierran TODAS sus categorías a la vez (incluidas las que quedan en 0 porciones, no solo la que se tocó), que cada fila muestra la cantidad real guardada en vez de "0", y que borrar el registro (incluido uno en 0) vuelve a destrabar esa categoría. No hace falta correrlos a mano — están en el repo para que, la próxima vez que se le pida un cambio a Claude, pueda partir de ellos en vez de armar las pruebas de cero. Para correrlos manualmente (opcional, requiere Node.js y `npm i -g playwright`): `node test_live.js`, `node test_sheets_sync.js` o `node test_meal_lock.js` en la misma carpeta que `seguimiento_nutricional.html`.
+`test_live.js` es un script de pruebas (Playwright) que verifica que la app funciona bien: los dos perfiles, el arrastre de porciones, las pestañas Semana y Mes con sus selectores, el registro de días anteriores, exportar/importar, etc. No hace falta correrlo a mano — está en el repo para que, la próxima vez que se le pida un cambio a Claude, pueda partir de él en vez de armar las pruebas de cero. Para correrlo manualmente (opcional, requiere Node.js y `npm i -g playwright`): `node test_live.js` en la misma carpeta que `seguimiento_nutricional.html`.
 
 ## Nota
 
