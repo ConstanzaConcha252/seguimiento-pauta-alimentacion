@@ -2,11 +2,11 @@
 
 Web app personal para registrar el cumplimiento de la pauta nutricional día a día, pensada para usarse desde el celular (agregada a la pantalla de inicio, funciona como una app).
 
-**App en vivo:** xxxxx
+**App en vivo:** https://constanzaconcha252.github.io/seguimiento-pauta-alimentacion/seguimiento_nutricional.html
 
 ## Qué hace
 
-- Registro rápido por categoría de alimento (Cereales, Proteína, Fruta, Verduras, Lácteos, Aceites, Frutos secos) en porciones, comida por comida — sin necesidad de detallar cada plato.
+- Registro rápido por categoría de alimento (Cereales, Proteína, Fruta, Verduras, Lácteos, Aceites, Frutos secos) en porciones, comida por comida — sin necesidad de detallar cada plato. El stepper no deja pasar la meta de esa comida (ni bajar de 0), y una comida ya guardada queda marcada con un ✓ en su chip — reabrirla muestra lo ya registrado (no vuelve a 0) y corregir y volver a guardar reemplaza el valor en vez de duplicarlo.
 - Dos perfiles, **Coni** y **Lorenzo**, cada uno con su propia pauta: comidas, metas por categoría y avance completamente separados entre los dos.
 - Registro de días anteriores: en la pestaña Registrar hay un selector (‹ ›) para moverse a un día pasado y cargar ahí lo que se te haya olvidado — no afecta el indicador de "hoy" del encabezado, que siempre refleja el día real.
 - Auto-selección de la comida según la hora del día (solo cuando el día seleccionado es hoy), con opción de saltar una comida sin registrar nada.
@@ -32,7 +32,7 @@ GitHub Pages se actualiza solo con el contenido de la rama `main`, no hace falta
 
 ## Pruebas automatizadas
 
-`test_live.js` es un script de pruebas (Playwright) que verifica que la app funciona bien: los dos perfiles, el arrastre de porciones, las pestañas Semana y Mes con sus selectores, el registro de días anteriores, exportar/importar, etc. No hace falta correrlo a mano — está en el repo para que, la próxima vez que se le pida un cambio a Claude, pueda partir de él en vez de armar las pruebas de cero. Para correrlo manualmente (opcional, requiere Node.js y `npm i -g playwright`): `node test_live.js` en la misma carpeta que `seguimiento_nutricional.html`.
+`test_live.js` es un script de pruebas (Playwright) que verifica que la app funciona bien: los dos perfiles, el arrastre de porciones, el límite de porciones por meta, que una comida guardada no se pueda duplicar, las pestañas Semana y Mes con sus selectores, el registro de días anteriores, exportar/importar, etc. No hace falta correrlo a mano — está en el repo para que, la próxima vez que se le pida un cambio a Claude, pueda partir de él en vez de armar las pruebas de cero. Para correrlo manualmente (opcional, requiere Node.js y `npm i -g playwright`): `node test_live.js` en la misma carpeta que `seguimiento_nutricional.html`.
 
 ## Nota
 

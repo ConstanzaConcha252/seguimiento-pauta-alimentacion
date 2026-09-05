@@ -187,6 +187,7 @@
     font-family:"IBM Plex Sans"; font-weight:600;
   }
   .stepper button:active{background:var(--accent-soft); color:var(--accent);}
+  .stepper button:disabled{opacity:.35; cursor:default;}
   .stepper .val{min-width:30px; text-align:center; font-weight:700; font-size:15px;}
 
   .save-btn{
@@ -541,10 +542,22 @@
   var STATE = loadState();
   function currentData(){ return STATE.profiles[STATE.activeProfile]; }
 
-  var draft = {}; // ephemeral stepper values for the active meal, category -> portions
-  var activeMeal = autoMeal();
-  var activeTab = "registrar";
+  // El stepper de cada comida arranca con lo que ya esté guardado para ese día+comida
+  // (en vez de siempre 0), para que reabrir una comida ya registrada muestre sus
+  // porciones reales — así queda claro que ya se registró y guardar de nuevo no duplica.
+  function draftFromLogs(logs, dateStr, mealKey){
+    var d = {};
+    logs.forEach(function(l){
+      if (l.date===dateStr && l.meal===mealKey) d[l.category] = round1((d[l.category]||0) + l.portions);
+    });
+    return d;
+  }
+  function draftForMeal(dateStr, mealKey){ return draftFromLogs(currentData().logs, dateStr, mealKey); }
+
   var dayOffset = 0;   // 0 = día actual (hoy); negativo = días anteriores (nunca > 0) — para Registrar
+  var activeMeal = autoMeal();
+  var draft = draftForMeal(selectedDateStr(), activeMeal); // ephemeral stepper values for la comida activa, categoría -> porciones
+  var activeTab = "registrar";
   var weekOffset = 0;  // 0 = semana actual; negativo = semanas anteriores (nunca > 0)
   var monthOffset = 0; // 0 = mes actual; negativo = meses anteriores (nunca > 0)
   var MONTH_LABELS = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
@@ -694,8 +707,8 @@
         if (p === STATE.activeProfile) return;
         var newState = cloneState();
         newState.activeProfile = p;
-        draft = {};
         activeMeal = (dayOffset === 0) ? autoMeal(p) : PROFILE_CONFIG[p].meals[0].key;
+        draft = draftFromLogs(newState.profiles[p].logs, selectedDateStr(), activeMeal);
         persist(newState, "Registrando para " + p);
       });
       host.appendChild(b);
@@ -705,12 +718,14 @@
   function renderMealRow(){
     var row = document.getElementById("meal-row");
     row.innerHTML = "";
+    var day = selectedDateStr();
     activeMeals().forEach(function(m){
       var b = document.createElement("button");
       b.className = "meal-chip";
-      b.textContent = m.key;
+      var already = currentData().logs.some(function(l){ return l.date===day && l.meal===m.key; });
+      b.textContent = m.key + (already ? " ✓" : "");
       b.setAttribute("aria-selected", m.key===activeMeal);
-      b.addEventListener("click", function(){ activeMeal = m.key; draft = {}; renderRegistrar(); });
+      b.addEventListener("click", function(){ activeMeal = m.key; draft = draftForMeal(selectedDateStr(), activeMeal); renderRegistrar(); });
       row.appendChild(b);
     });
   }
@@ -726,8 +741,11 @@
     var minus = document.createElement("button"); minus.textContent = "–";
     var val = document.createElement("div"); val.className = "val"; val.textContent = fmtNum(value);
     var plus = document.createElement("button"); plus.textContent = "+";
+    // No se puede bajar de 0 ni pasar la meta de esta fila (meta de la comida + arrastre).
+    minus.disabled = value <= 0;
+    plus.disabled = target > 0 && value >= target;
     minus.addEventListener("click", function(){ onChange(Math.max(0, round1(value-0.5))); });
-    plus.addEventListener("click", function(){ onChange(round1(value+0.5)); });
+    plus.addEventListener("click", function(){ onChange(Math.min(target, round1(value+0.5))); });
     stepper.appendChild(minus); stepper.appendChild(val); stepper.appendChild(plus);
     wrap.appendChild(left); wrap.appendChild(stepper);
     return wrap;
@@ -1028,14 +1046,16 @@
     var label = dayOffset === 0 ? "Hoy" : capitalize(new Intl.DateTimeFormat("es-CL", {weekday:"long", day:"numeric", month:"long"}).format(d));
     renderPeriodNav("day-nav", label, dayOffset < 0,
       function(){
-        dayOffset -= 1; draft = {};
+        dayOffset -= 1;
         activeMeal = activeMeals()[0].key;
+        draft = draftForMeal(selectedDateStr(), activeMeal);
         renderRegistrar();
       },
       function(){
         if (dayOffset < 0){
-          dayOffset += 1; draft = {};
+          dayOffset += 1;
           activeMeal = (dayOffset === 0) ? autoMeal() : activeMeals()[0].key;
+          draft = draftForMeal(selectedDateStr(), activeMeal);
           renderRegistrar();
         }
       });
@@ -1084,30 +1104,39 @@
 
   document.getElementById("save-meal-btn").addEventListener("click", function(){
     var newState = cloneState();
-    var any = false;
+    var pdata = newState.profiles[newState.activeProfile];
     var savedMeal = activeMeal;
+    var savedDate = selectedDateStr();
+    var any = false;
+    // Reemplaza lo ya guardado de esta comida/día por los valores actuales del stepper,
+    // en vez de sumarle registros nuevos encima — así guardar dos veces (o corregir una
+    // porción y volver a guardar) no duplica lo ya registrado.
+    pdata.logs = pdata.logs.filter(function(l){ return !(l.date===savedDate && l.meal===savedMeal); });
     Object.keys(draft).forEach(function(cat){
       if (draft[cat] > 0){
         any = true;
-        newState.profiles[newState.activeProfile].logs.push({
-          id: uid(), date: selectedDateStr(), meal: activeMeal, category: cat, portions: draft[cat],
+        pdata.logs.push({
+          id: uid(), date: savedDate, meal: savedMeal, category: cat, portions: draft[cat],
           time: new Date().toLocaleTimeString("es-CL", {hour:"2-digit", minute:"2-digit"}),
           ts: new Date().toISOString()
         });
       }
     });
     if (!any) return;
-    draft = {};
     persist(newState, withDaySuffix("¡" + savedMeal + " guardado!"));
     var nm = nextMealOf(savedMeal);
-    if (nm){ activeMeal = nm; renderRegistrar(); }
+    if (nm){
+      activeMeal = nm;
+      draft = draftForMeal(selectedDateStr(), activeMeal);
+      renderRegistrar();
+    }
   });
 
   document.getElementById("skip-meal-btn").addEventListener("click", function(){
     var nm = nextMealOf(activeMeal);
     if (!nm){ showToast("Ya es la última comida del día"); return; }
     activeMeal = nm;
-    draft = {};
+    draft = draftForMeal(selectedDateStr(), activeMeal);
     renderRegistrar();
   });
 
